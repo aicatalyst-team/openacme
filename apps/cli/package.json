@@ -1,11 +1,29 @@
 {
   "name": "@openacme/cli",
-  "version": "0.0.1",
-  "private": true,
+  "version": "0.1.0",
+  "description": "CLI for the OpenAcme AI agent platform — install globally to get the `openacme` command.",
+  "license": "MIT",
+  "author": "sandydasari",
+  "homepage": "https://github.com/sandydasari/openacme/tree/main/apps/cli#readme",
+  "bugs": "https://github.com/sandydasari/openacme/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sandydasari/openacme.git",
+    "directory": "apps/cli"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "bin": {
     "openacme": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc --build",
     "check-types": "tsc --noEmit",
