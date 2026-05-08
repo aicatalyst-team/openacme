@@ -223,6 +223,6 @@ Per-package: `pnpm --filter @openacme/<pkg> <script>`.
 
 <div align="center">
 
-**MIT** © [sandydasari](mailto:utkarsh@autonomyai.io) · [github.com/sandydasari/openacme](https://github.com/sandydasari/openacme)
+**MIT** © [sandydasari](mailto:sandydasari977@gmail.com) · [github.com/sandydasari/openacme](https://github.com/sandydasari/openacme)
 
 </div>
