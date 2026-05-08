@@ -5,7 +5,20 @@
     { "repo": "sandydasari/openacme" }
   ],
   "commit": false,
-  "fixed": [],
+  "fixed": [
+    [
+      "@openacme/agent-core",
+      "@openacme/auth",
+      "@openacme/cli",
+      "@openacme/config",
+      "@openacme/db",
+      "@openacme/llm-provider",
+      "@openacme/mcp-client",
+      "@openacme/server",
+      "@openacme/skills",
+      "@openacme/tools"
+    ]
+  ],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
