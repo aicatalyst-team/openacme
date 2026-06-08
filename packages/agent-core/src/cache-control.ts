@@ -9,11 +9,26 @@ function ephemeral(ttl: CacheTtl): EphemeralMarker {
   return ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
 }
 
+// Anthropic auto-checks up to ~20 content blocks before each explicit
+// breakpoint for a cache hit. Spacing the tail breakpoints by less than that
+// (slack for the granularity of whole messages) keeps a growing, tool-heavy
+// history incrementally cacheable instead of letting one multi-block turn
+// overshoot the window and drop the read.
+const LOOKBACK_BLOCKS = 18;
+
+function contentBlocks(m: ModelMessage): number {
+  const c = (m as { content: unknown }).content;
+  return Array.isArray(c) ? Math.max(1, c.length) : 1;
+}
+
 /**
- * `system_and_3` strategy — 1 breakpoint on system + up to 3 on the most
- * recent non-system messages. 4 is the Anthropic max; the rolling tail
- * keeps the prefix-cache walk inside the 20-block lookback window over
- * long agentic turns.
+ * 4 breakpoints (Anthropic max): 1 on the system block + the most recent
+ * non-system message (the growing edge — next turn reads up to here), then
+ * up to 2 more anchors walking backward, spaced ~`LOOKBACK_BLOCKS` apart so
+ * adjacent breakpoints stay inside Anthropic's auto-lookback window. Short
+ * conversations only spend 2 breakpoints; the auto-lookback covers the small
+ * per-turn growth on its own. The extra anchors only matter when a single
+ * turn adds more blocks than the window (many tool calls + results).
  */
 export function applyAnthropicCacheControl(
   messages: ModelMessage[],
@@ -24,19 +39,29 @@ export function applyAnthropicCacheControl(
   const marker = ephemeral(ttl);
   const out = messages.map(cloneMessage);
 
-  let used = 0;
+  let remaining = 4;
   if (out[0]!.role === "system") {
     markCacheable(out[0]!, marker);
-    used += 1;
+    remaining -= 1;
   }
 
-  const remaining = 4 - used;
   const nonSystem: number[] = [];
   for (let i = 0; i < out.length; i++) {
     if (out[i]!.role !== "system") nonSystem.push(i);
   }
-  for (const i of nonSystem.slice(-remaining)) {
-    markCacheable(out[i]!, marker);
+  if (nonSystem.length === 0 || remaining <= 0) return out;
+
+  markCacheable(out[nonSystem[nonSystem.length - 1]!]!, marker);
+  remaining -= 1;
+
+  let blocksSinceMark = 0;
+  for (let k = nonSystem.length - 2; k >= 0 && remaining > 0; k--) {
+    blocksSinceMark += contentBlocks(out[nonSystem[k + 1]!]!);
+    if (blocksSinceMark >= LOOKBACK_BLOCKS) {
+      markCacheable(out[nonSystem[k]!]!, marker);
+      remaining -= 1;
+      blocksSinceMark = 0;
+    }
   }
 
   return out;

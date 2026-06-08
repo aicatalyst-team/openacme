@@ -1059,7 +1059,7 @@ export async function createApp(config: Config): Promise<{ app: Hono; manager: A
         baseUrl: rawModel.baseUrl,
         headers: rawModel.headers,
         auth: rawModel.auth ?? "api_key",
-        cacheTtl: rawModel.cacheTtl ?? "5m",
+        cacheTtl: rawModel.cacheTtl ?? "1h",
       },
       server: config.server,
       behavior: config.behavior,

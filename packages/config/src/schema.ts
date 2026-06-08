@@ -73,8 +73,9 @@ export const ModelConfigSchema = z.object({
   // Anthropic prompt-cache breakpoint TTL. Honored on the native Anthropic
   // path and on OpenRouter+Claude; ignored on other providers. 1h costs 2×
   // input on writes vs 5m's 1.25×, but pays back across long agentic turns
-  // where the prefix outlives the 5-minute window.
-  cacheTtl: z.enum(["5m", "1h"]).default("5m"),
+  // and autonomous wakes: the default probe cadence is 30 min, so a 5-minute
+  // prefix is always cold by the next turn — the write premium never amortizes.
+  cacheTtl: z.enum(["5m", "1h"]).default("1h"),
 });
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 

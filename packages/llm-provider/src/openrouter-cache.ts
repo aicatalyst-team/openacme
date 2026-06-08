@@ -16,6 +16,7 @@ type ContentPart = {
 type ChatMessage = {
   role?: string;
   content?: string | ContentPart[];
+  tool_calls?: unknown[];
 } & Record<string, unknown>;
 
 type ChatBody = {
@@ -28,6 +29,19 @@ type CacheTtl = "5m" | "1h";
 // 5m is OpenRouter's default when `ttl` is absent; only emit the field for 1h.
 function buildMarker(ttl: CacheTtl): { type: "ephemeral"; ttl?: "1h" } {
   return ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
+}
+
+// Block count after OpenRouter translates the chat-completions message into
+// Anthropic blocks: content parts (string ⇒ 1) plus one tool_use block per
+// tool call. Mirrors `contentBlocks` on the native path so the lookback math
+// matches the same ~20-block window.
+const LOOKBACK_BLOCKS = 18;
+function messageBlocks(msg: ChatMessage): number {
+  const contentBlocks = Array.isArray(msg.content)
+    ? Math.max(1, msg.content.length)
+    : 1;
+  const toolBlocks = Array.isArray(msg.tool_calls) ? msg.tool_calls.length : 0;
+  return contentBlocks + toolBlocks;
 }
 
 export function injectAnthropicCacheControl(
@@ -44,21 +58,31 @@ export function injectAnthropicCacheControl(
   if (!Array.isArray(parsed.messages) || parsed.messages.length === 0) return body;
 
   const marker = buildMarker(ttl);
-  let used = 0;
   const messages = parsed.messages;
+  let remaining = 4;
 
   if (messages[0]!.role === "system") {
     markContentCacheable(messages[0]!, marker);
-    used += 1;
+    remaining -= 1;
   }
 
-  const remaining = 4 - used;
   const nonSystem: number[] = [];
   for (let i = 0; i < messages.length; i++) {
     if (messages[i]!.role !== "system") nonSystem.push(i);
   }
-  for (const i of nonSystem.slice(-remaining)) {
-    markContentCacheable(messages[i]!, marker);
+  if (nonSystem.length === 0 || remaining <= 0) return JSON.stringify(parsed);
+
+  markContentCacheable(messages[nonSystem[nonSystem.length - 1]!]!, marker);
+  remaining -= 1;
+
+  let blocksSinceMark = 0;
+  for (let k = nonSystem.length - 2; k >= 0 && remaining > 0; k--) {
+    blocksSinceMark += messageBlocks(messages[nonSystem[k + 1]!]!);
+    if (blocksSinceMark >= LOOKBACK_BLOCKS) {
+      markContentCacheable(messages[nonSystem[k]!]!, marker);
+      remaining -= 1;
+      blocksSinceMark = 0;
+    }
   }
 
   return JSON.stringify(parsed);

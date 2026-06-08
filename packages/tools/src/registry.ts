@@ -115,7 +115,15 @@ export class ToolRegistry {
    */
   getVercelTools(toolNames?: Set<string>): Record<string, unknown> {
     const tools: Record<string, unknown> = {};
-    for (const entry of this._tools.values()) {
+    // Emit in a stable name-sorted order. Map iteration is insertion order,
+    // and MCP tools register from servers that connect in parallel — so the
+    // unsorted order can shuffle across restarts / MCP re-inits and reorder
+    // the serialized `tools` block, breaking the provider-side prompt cache
+    // on the entire prefix. Sorting makes the block byte-stable.
+    const entries = [...this._tools.values()].sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+    );
+    for (const entry of entries) {
       if (toolNames && !toolNames.has(entry.name)) continue;
       if (entry.checkFn && !entry.checkFn()) continue;
 
