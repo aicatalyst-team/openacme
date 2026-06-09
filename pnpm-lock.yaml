@@ -551,6 +551,9 @@ importers:
       '@ai-sdk/openai-compatible':
         specifier: ^2.0.47
         version: 2.0.47(zod@4.4.3)
+      '@ai-sdk/provider':
+        specifier: ^3.0.10
+        version: 3.0.10
       '@openacme/auth':
         specifier: workspace:*
         version: link:../auth
@@ -573,6 +576,9 @@ importers:
       typescript:
         specifier: 5.9.2
         version: 5.9.2
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.15.3)(jsdom@25.0.1)(lightningcss@1.32.0)
 
   packages/mcp-client:
     dependencies:
