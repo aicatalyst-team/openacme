@@ -89,12 +89,25 @@ export class ToolRegistry {
   }
 
   /**
+   * Model-facing emission order. Map iteration is insertion order and MCP
+   * servers connect in parallel, so the raw order can shuffle across
+   * restarts — which reorders the serialized `tools` block and invalidates
+   * the provider-side prompt cache for the entire prefix. Name-sorted is
+   * byte-stable.
+   */
+  private sortedEntries(): ToolEntry[] {
+    return [...this._tools.values()].sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+  }
+
+  /**
    * Get tool definitions in the format expected by the Vercel AI SDK.
    * Only includes tools whose checkFn() passes (or have no checkFn).
    */
   getDefinitions(toolNames?: Set<string>): ToolDefinition[] {
     const result: ToolDefinition[] = [];
-    for (const entry of this._tools.values()) {
+    for (const entry of this.sortedEntries()) {
       if (toolNames && !toolNames.has(entry.name)) continue;
       if (entry.checkFn && !entry.checkFn()) continue;
 
@@ -115,7 +128,7 @@ export class ToolRegistry {
    */
   getVercelTools(toolNames?: Set<string>): Record<string, unknown> {
     const tools: Record<string, unknown> = {};
-    for (const entry of this._tools.values()) {
+    for (const entry of this.sortedEntries()) {
       if (toolNames && !toolNames.has(entry.name)) continue;
       if (entry.checkFn && !entry.checkFn()) continue;
 
