@@ -84,6 +84,51 @@ describe("transformAnthropicOAuthBody", () => {
     expect(userText).toContain("extra trailing text");
   });
 
+  it("keeps cache_control on the identity entry when splitting", () => {
+    const out = parse(
+      transformAnthropicOAuthBody(
+        baseBody({
+          system: [
+            {
+              type: "text",
+              text: `${SYSTEM_IDENTITY}\n\nextra trailing text`,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+        }),
+      ),
+    );
+    const identity = out.system.find(
+      (s: { text?: string }) => s.text === SYSTEM_IDENTITY,
+    );
+    expect(identity.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("re-homes a cache_control from relocated system text onto a kept entry", () => {
+    const out = parse(
+      transformAnthropicOAuthBody(
+        baseBody({
+          system: [
+            {
+              type: "text",
+              text: "you are a pirate",
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+        }),
+      ),
+    );
+    // The pirate prompt moves into the first user message; its breakpoint
+    // must survive on the last kept system entry (the identity).
+    const withMarker = out.system.filter(
+      (s: { cache_control?: unknown }) => s.cache_control,
+    );
+    expect(withMarker).toHaveLength(1);
+    expect(out.system[out.system.length - 1].cache_control).toEqual({
+      type: "ephemeral",
+    });
+  });
+
   it("dedupes a stale pre-existing billing header", () => {
     const stale = `${BILLING_PREFIX}: cc_version=stale; cch=zzzzz;`;
     const out = parse(
