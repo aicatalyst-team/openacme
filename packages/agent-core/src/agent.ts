@@ -13,6 +13,7 @@ import * as path from "node:path";
 import {
   getModel,
   getEffectiveContextWindow,
+  resolveSubagentModel,
   supportsToolResultMedia,
 } from "@openacme/llm-provider";
 import { createLogger } from "@openacme/config/logger";
@@ -315,6 +316,8 @@ export class Agent {
     toolFilter?: ReadonlySet<string>;
     /** Telemetry tag override (Logfire). No-op unless OPENACME_TELEMETRY=1. */
     telemetryFunctionId?: string;
+    /** Model override for this call — forks use the cheap subagent tier. */
+    modelOverride?: import("@openacme/config").ModelConfig;
     /** Hook between LLM steps — used by `runAutonomous` to inject events
      *  that arrived mid-turn. Forwarded to `streamText` unchanged. */
     prepareStep?: Parameters<typeof streamText>[0]["prepareStep"];
@@ -350,7 +353,7 @@ export class Agent {
     const system = this.getSystemPrompt(opts.sessionId);
 
     return streamText({
-      model: getModel(this.config.model),
+      model: getModel(opts.modelOverride ?? this.config.model),
       system,
       messages,
       tools: tools as Parameters<typeof streamText>[0]["tools"],
@@ -1187,7 +1190,7 @@ export class Agent {
         },
       ];
       await generateText({
-        model: getModel(this.config.model),
+        model: getModel(resolveSubagentModel(this.config.model)),
         system,
         messages: flushMessages,
         tools: tools as Parameters<typeof generateText>[0]["tools"],

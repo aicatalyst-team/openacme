@@ -19,7 +19,7 @@ import {
 } from "ai";
 import { randomUUID } from "node:crypto";
 import { z, type ZodTypeAny } from "zod";
-import { getModel } from "@openacme/llm-provider";
+import { getModel, resolveSubagentModel } from "@openacme/llm-provider";
 import type { Agent } from "./agent.js";
 import type { TokenUsage } from "./types.js";
 
@@ -146,6 +146,7 @@ async function runForked(
       stopWhen: args.stopWhen ?? stepCountIs(DEFAULT_FORKED_STEP_CAP),
       toolFilter: args.toolFilter,
       telemetryFunctionId: args.telemetryFunctionId,
+      modelOverride: resolveSubagentModel(args.parent.config.model),
     });
 
     const stream = result.toUIMessageStream({ sendStart: false });
@@ -219,7 +220,7 @@ async function runStructured<S extends ZodTypeAny>(
 ): Promise<StructuredSubagentResult<z.infer<S>>> {
   try {
     const result = await generateObject({
-      model: getModel(args.parent.config.model),
+      model: getModel(resolveSubagentModel(args.parent.config.model)),
       system: args.system,
       schema: args.schema,
       messages: [{ role: "user", content: args.user }],

@@ -37,6 +37,7 @@ vi.mock("ai", async () => {
 
 vi.mock("@openacme/llm-provider", () => ({
   getModel: getModelMock,
+  resolveSubagentModel: (m: unknown) => m,
   // Returning null disables the size-guard in flushMemoryBeforeCompression
   // so existing tests don't accidentally exercise that branch.
   getEffectiveContextWindow: () => null,
