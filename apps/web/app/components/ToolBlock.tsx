@@ -248,9 +248,13 @@ function computeStatus(part: ToolPart, _isStreaming: boolean): Status {
 }
 
 function StatusDot({ status }: { status: Status }) {
-  // Interrupted renders as a hollow ring (DESIGN.md §5: stopped/disabled
-  // pattern). Other states keep their permitted chroma — plot-red for
-  // live activity, destructive for error, ink at rest.
+  // Indicator-lamp model: the lamp is always present; it's LIT blue and
+  // pulsing while running, red on error, and UNLIT (hairline gray) once
+  // done — visible on the faceplate without reading as a column of marks.
+  // Interrupted keeps the hollow stopped ring.
+  if (status === "done") {
+    return <span className="status-dot shrink-0 bg-ink-faint" aria-hidden />;
+  }
   if (status === "interrupted") {
     return (
       <span
@@ -260,11 +264,7 @@ function StatusDot({ status }: { status: Status }) {
     );
   }
   const cls =
-    status === "running"
-      ? "bg-signal-blue"
-      : status === "error"
-        ? "bg-destructive"
-        : "bg-ink";
+    status === "running" ? "bg-signal-blue pulse-live" : "bg-destructive";
   return <span className={cn("status-dot shrink-0", cls)} aria-hidden />;
 }
 

@@ -19,6 +19,7 @@ import { Repeat2 } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { TabularTick } from "@/app/components/ui/tabular-tick";
 import { ActiveMarker } from "@/app/components/ui/active-marker";
+import { AgentRef } from "@/app/components/ui/agent-ref";
 import {
   STATUS_LABEL,
   STATUS_ORDER,
@@ -212,14 +213,21 @@ function BoardCard({
       : "text-ink-soft"
     : "text-ink";
 
+  // div+role (not <button>) so the @assignee link can nest validly;
+  // useSortable's attributes already carry role="button" + tabIndex.
   return (
-    <button
+    <div
       ref={setNodeRef}
       style={style}
-      type="button"
       onClick={() => onPick(task.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onPick(task.id);
+        }
+      }}
       className={cn(
-        "relative border border-paper-rule bg-paper px-3.5 py-2 text-left transition-colors",
+        "relative cursor-pointer border border-paper-rule bg-paper px-3.5 py-2 text-left transition-colors",
         selected ? "bg-paper-sunk text-ink" : "hover:bg-paper-sunk",
         isDragging && "opacity-50"
       )}
@@ -232,7 +240,7 @@ function BoardCard({
           {task.title}
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] tabular-nums text-ink-faint">
-          <span>@{task.assignee}</span>
+          <AgentRef id={task.assignee} />
           {task.due_at && (
             <span className={dueUrgencyClass(task.due_at)}>
               due {formatDate(task.due_at)}
@@ -267,6 +275,6 @@ function BoardCard({
           )}
         </div>
       </div>
-    </button>
+    </div>
   );
 }

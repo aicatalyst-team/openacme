@@ -29,6 +29,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/app/components/ui/button";
 import { Textarea } from "@/app/components/ui/textarea";
 import { SectionEyebrow } from "@/app/components/ui/section-eyebrow";
+import { AgentRef } from "@/app/components/ui/agent-ref";
 import { ScribedRule } from "@/app/components/ui/scribed-rule";
 import { JargonChip } from "@/app/components/ui/jargon-chip";
 import { ChatSetupPanel } from "./components/ChatSetupPanel";
@@ -852,7 +853,7 @@ function ChatPageInner() {
   // a credential, so showing it would lie about what's available.
   if (nothingConfigured) {
     return (
-      <main className="paper-surface relative min-h-screen overflow-y-auto bg-paper">
+      <main className="relative min-h-screen overflow-y-auto bg-paper">
         <ChatSetupPanel
           providers={modelCatalog.providers}
           onSetup={async () => {
@@ -931,7 +932,12 @@ function ChatPageInner() {
             </span>
             {activeAgent && (
               <span className="hidden font-mono text-[11px] text-ink-faint md:inline">
-                · {activeAgent.name}
+                ·{" "}
+                <AgentRef
+                  id={activeAgent.id}
+                  label={activeAgent.name}
+                  className="text-ink-soft"
+                />
               </span>
             )}
           </div>
@@ -1255,11 +1261,17 @@ function isToolPart(p: Part): boolean {
 
 function MessageHeader({
   role,
+  agentId,
+  agentName,
   model,
   streaming,
   createdAt,
 }: {
   role: "user" | "assistant";
+  /** When set, assistant rows show the agent's name (linked) instead of
+   *  the generic "assistant" label. */
+  agentId?: string;
+  agentName?: string;
   model?: string;
   streaming?: boolean;
   createdAt?: number;
@@ -1283,9 +1295,13 @@ function MessageHeader({
         )}
         aria-hidden
       />
-      <span className={role === "assistant" ? "text-ink" : "text-ink-soft"}>
-        {role}
-      </span>
+      {role === "assistant" && agentId ? (
+        <AgentRef id={agentId} label={agentName ?? agentId} className="text-ink" />
+      ) : (
+        <span className={role === "assistant" ? "text-ink" : "text-ink-soft"}>
+          {role}
+        </span>
+      )}
       {model && role === "assistant" && (
         <>
           <span className="text-ink-faint">·</span>
@@ -1451,6 +1467,8 @@ const MessageBubble = memo(function MessageBubble({
     <section className="section-enter border-t border-paper-rule py-5 first:border-t-0 first:pt-0">
       <MessageHeader
         role="assistant"
+        agentId={agent?.id}
+        agentName={agent?.name}
         model={modelLabel}
         streaming={isStreaming}
         createdAt={(message as { createdAt?: number }).createdAt}

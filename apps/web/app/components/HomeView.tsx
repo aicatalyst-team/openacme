@@ -37,6 +37,7 @@ import { cn } from "@/app/lib/utils";
 import { navigateClient } from "@/app/lib/navigate";
 import { InstallHint } from "@/app/components/InstallHint";
 import { NotificationsPrompt } from "@/app/components/NotificationsPrompt";
+import { AgentRef } from "@/app/components/ui/agent-ref";
 import { Button } from "@/app/components/ui/button";
 import {
   Popover,
@@ -171,7 +172,11 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
           </div>
           <div className="flex items-center gap-1 truncate text-[11px] text-ink-soft">
             <Bot className="size-3 shrink-0" aria-hidden />
-            <span className="truncate">{s.agentName}</span>
+            <AgentRef
+              id={s.agentId}
+              label={s.agentName}
+              className="truncate"
+            />
             <span className="text-ink-faint">·</span>
             <span className="truncate font-mono tabular-nums">
               {formatRelative(s.lastActivity)}
