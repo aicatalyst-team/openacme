@@ -839,10 +839,6 @@ export default function SettingsPage() {
             <h1 className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
               Settings
             </h1>
-            <span className="hidden h-3 w-px bg-paper-rule sm:inline" aria-hidden />
-            <span className="hidden font-mono text-[12px] text-ink-soft sm:inline">
-              Providers · Server · MCP
-            </span>
           </div>
         </header>
 

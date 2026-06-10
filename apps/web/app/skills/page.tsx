@@ -219,15 +219,11 @@ function SkillsPageInner() {
       <Sidebar />
 
       <main className="flex flex-1 flex-col overflow-hidden bg-paper">
-        <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-paper-rule px-3 md:px-6">
+        <header className="flex h-12 shrink-0 items-center justify-between gap-2 px-3 md:px-6">
           <div className="flex items-center gap-2 md:gap-3">
             <h1 className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
               Skills
             </h1>
-            <span className="hidden h-3 w-px bg-paper-rule sm:inline" aria-hidden />
-            <span className="hidden font-mono text-[12px] tabular-nums text-ink-soft sm:inline">
-              {skills.length} loaded
-            </span>
           </div>
           {activeTab === "skills" && (
             <div className="flex items-center gap-2">

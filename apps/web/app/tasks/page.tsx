@@ -248,7 +248,6 @@ function TasksPageInner() {
     return out;
   }, [tasks]);
 
-  const inProgressCount = grouped.get("in_progress")?.length ?? 0;
 
   const dirty = !!(
     draft &&
@@ -273,14 +272,6 @@ function TasksPageInner() {
             <h1 className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
               Tasks
             </h1>
-            <span className="hidden h-3 w-px bg-paper-rule sm:inline" aria-hidden />
-            <span className="hidden font-mono text-[12px] text-ink-soft sm:inline">
-              <TabularTick value={tasks.length} /> filed
-            </span>
-            <span className="hidden h-3 w-px bg-paper-rule md:inline" aria-hidden />
-            <span className="hidden font-mono text-[12px] text-ink-soft md:inline">
-              <TabularTick value={inProgressCount} /> in progress
-            </span>
           </div>
           <div className="inline-flex border border-paper-rule">
             <button

@@ -52,7 +52,6 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import { SectionEyebrow } from "@/app/components/ui/section-eyebrow";
-import { TabularTick } from "@/app/components/ui/tabular-tick";
 import { ActiveMarker } from "@/app/components/ui/active-marker";
 import { cn } from "@/app/lib/utils";
 import { Markdown } from "@/app/components/Markdown";
@@ -765,10 +764,6 @@ function AgentsPageInner() {
             <h1 className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
               Agents
             </h1>
-            <span className="hidden h-3 w-px bg-paper-rule sm:inline" aria-hidden />
-            <span className="hidden font-mono text-[12px] text-ink-soft sm:inline">
-              <TabularTick value={agents.length} /> configured
-            </span>
           </div>
           <Button size="sm" onClick={startCreate}>
             <Plus className="size-4" />
