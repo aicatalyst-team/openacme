@@ -411,12 +411,12 @@ function renderSummary(name: string, input: unknown, output: unknown): ReactNode
     case "task_create": {
       const t = str(input.title);
       const out = parseJsonish(output);
-      const createdId = str(pickTaskId(out));
+      const createdId = pickTaskId(out);
       return (
         <span className="flex min-w-0 items-center gap-2">
           {createdId && (
             <code className="bg-paper px-1.5 py-px text-[11px] text-ink">
-              {createdId.slice(0, 8)}
+              {`#${createdId}`}
             </code>
           )}
           {t && <span className="min-w-0 truncate text-ink">{t}</span>}
@@ -425,13 +425,13 @@ function renderSummary(name: string, input: unknown, output: unknown): ReactNode
     }
     case "task_view":
     case "task_update": {
-      const id = str(input.task_id) ?? str(input.id);
+      const id = taskIdStr(input.task_id) ?? taskIdStr(input.id);
       const status = str(input.status);
       return (
         <span className="flex min-w-0 items-center gap-2">
           {id && (
             <code className="bg-paper px-1.5 py-px text-[11px] text-ink">
-              {id.slice(0, 8)}
+              {`#${id}`}
             </code>
           )}
           {status && <span className="text-ink-faint">{status}</span>}
@@ -439,13 +439,13 @@ function renderSummary(name: string, input: unknown, output: unknown): ReactNode
       );
     }
     case "task_comment": {
-      const id = str(input.task_id) ?? str(input.id);
+      const id = taskIdStr(input.task_id) ?? taskIdStr(input.id);
       const kind = str(input.kind);
       return (
         <span className="flex min-w-0 items-center gap-2">
           {id && (
             <code className="bg-paper px-1.5 py-px text-[11px] text-ink">
-              {id.slice(0, 8)}
+              {`#${id}`}
             </code>
           )}
           {kind && <span className="text-ink-faint">{kind}</span>}
@@ -453,14 +453,14 @@ function renderSummary(name: string, input: unknown, output: unknown): ReactNode
       );
     }
     case "task_comments": {
-      const id = str(input.task_id) ?? str(input.id);
+      const id = taskIdStr(input.task_id) ?? taskIdStr(input.id);
       const out = parseJsonish(output);
       const n = countResults(out) ?? num(out?.count);
       return (
         <span className="flex min-w-0 items-center gap-2">
           {id && (
             <code className="bg-paper px-1.5 py-px text-[11px] text-ink">
-              {id.slice(0, 8)}
+              {`#${id}`}
             </code>
           )}
           {n !== null && (
@@ -1105,16 +1105,22 @@ function formatOutput(output: unknown, errorText?: string): string {
   }
   return safeStringify(output);
 }
+// Task ids are sequence numbers; tool args carry them as strings or ints.
+function taskIdStr(v: unknown): string | undefined {
+  return typeof v === "string" || typeof v === "number" ? String(v) : undefined;
+}
+
 // Pull a task id out of a `{ task: {...} }` or `{ task_id: ... }` envelope.
 // Used by task_create's summary + Open-link logic to find the new id on the
 // output side (input has no id at create time).
 function pickTaskId(out: Record<string, unknown> | null): string | undefined {
   if (!out) return undefined;
   const task = out.task;
-  if (isObj(task) && typeof task.id === "string") return task.id;
-  if (typeof out.task_id === "string") return out.task_id;
-  if (typeof out.id === "string") return out.id;
-  return undefined;
+  if (isObj(task)) {
+    const id = taskIdStr(task.id);
+    if (id) return id;
+  }
+  return taskIdStr(out.task_id) ?? taskIdStr(out.id);
 }
 
 // Deep-link href for a task tool's "Open" button. Input-side for tools
@@ -1130,7 +1136,7 @@ function resolveTaskHref(
     return id ? `/tasks?id=${encodeURIComponent(id)}` : null;
   }
   if (!isObj(input)) return null;
-  const id = str(input.task_id) ?? str(input.id);
+  const id = taskIdStr(input.task_id) ?? taskIdStr(input.id);
   return id ? `/tasks?id=${encodeURIComponent(id)}` : null;
 }
 

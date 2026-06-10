@@ -16,6 +16,7 @@ import {
   safeStringify,
   shortPath,
   str,
+  taskIdStr,
   trim,
   type DiffFile,
   type DiffHunk,
@@ -256,10 +257,10 @@ function renderSummary(name: string, input: unknown, output: unknown): ReactNode
     case "task_create": {
       const t = str(input["title"]);
       const out = parseJsonish(output);
-      const createdId = str(pickTaskId(out));
+      const createdId = pickTaskId(out);
       return (
         <Box>
-          {createdId && <Text color="magenta">{createdId.slice(0, 8)}</Text>}
+          {createdId && <Text color="magenta">{`#${createdId}`}</Text>}
           {t && (
             <>
               {createdId && <Text dimColor>  ·  </Text>}
@@ -271,11 +272,11 @@ function renderSummary(name: string, input: unknown, output: unknown): ReactNode
     }
     case "task_view":
     case "task_update": {
-      const id = str(input["task_id"]) ?? str(input["id"]);
+      const id = taskIdStr(input["task_id"]) ?? taskIdStr(input["id"]);
       const status = str(input["status"]);
       return (
         <Box>
-          {id && <Text color="magenta">{id.slice(0, 8)}</Text>}
+          {id && <Text color="magenta">{`#${id}`}</Text>}
           {status && (
             <>
               {id && <Text dimColor>  ·  </Text>}
@@ -286,11 +287,11 @@ function renderSummary(name: string, input: unknown, output: unknown): ReactNode
       );
     }
     case "task_comment": {
-      const id = str(input["task_id"]) ?? str(input["id"]);
+      const id = taskIdStr(input["task_id"]) ?? taskIdStr(input["id"]);
       const kind = str(input["kind"]);
       return (
         <Box>
-          {id && <Text color="magenta">{id.slice(0, 8)}</Text>}
+          {id && <Text color="magenta">{`#${id}`}</Text>}
           {kind && (
             <>
               {id && <Text dimColor>  ·  </Text>}
@@ -301,12 +302,12 @@ function renderSummary(name: string, input: unknown, output: unknown): ReactNode
       );
     }
     case "task_comments": {
-      const id = str(input["task_id"]) ?? str(input["id"]);
+      const id = taskIdStr(input["task_id"]) ?? taskIdStr(input["id"]);
       const out = parseJsonish(output);
       const n = countResults(out) ?? num(out?.["count"]);
       return (
         <Box>
-          {id && <Text color="magenta">{id.slice(0, 8)}</Text>}
+          {id && <Text color="magenta">{`#${id}`}</Text>}
           {n !== null && (
             <>
               {id && <Text dimColor>  ·  </Text>}

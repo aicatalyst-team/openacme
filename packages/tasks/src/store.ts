@@ -3,6 +3,11 @@
  * `<tasksDir>/<id>.md` — YAML frontmatter for structured fields, body
  * for the agent-readable description and accumulated notes.
  *
+ * Ids are a single global sequence ("1", "2", …) shared by all agents.
+ * The high-water mark lives in `<tasksDir>/.seq` so deleting the
+ * highest-numbered task never recycles its id (comments and events
+ * outlive the task file and are keyed by it).
+ *
  * Concurrency: per-task in-process async mutex serializes
  * read-modify-write of a single id. Each operation only acquires one
  * mutex at a time — fan-out paths (`unblockDependents`, `delete --force`)
@@ -39,7 +44,7 @@
  * `park` / `watchdogPark`, `hasAnyActive`, and prompt rendering.
  */
 
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
@@ -49,6 +54,7 @@ import {
   NullableIso,
   RecurrenceSchema,
   TaskFrontmatterSchema,
+  TaskIdSchema,
   type Recurrence,
   type Task,
   type TaskCreate,
@@ -83,8 +89,8 @@ const TaskCreateInputSchema = z.object({
   created_by: z.string().min(1),
   body: z.string().optional(),
   session_id: z.string().min(1).nullable().optional(),
-  parent_id: z.string().min(1).nullable().optional(),
-  depends_on: z.array(z.string().min(1)).optional(),
+  parent_id: TaskIdSchema.nullable().optional(),
+  depends_on: z.array(TaskIdSchema).optional(),
   start_at: NullableIso.optional(),
   due_at: NullableIso.optional(),
   status: z
@@ -100,7 +106,7 @@ const TaskUpdateInputSchema = z.object({
     .optional(),
   assignee: z.string().min(1).optional(),
   session_id: z.string().min(1).nullable().optional(),
-  depends_on: z.array(z.string().min(1)).optional(),
+  depends_on: z.array(TaskIdSchema).optional(),
   start_at: NullableIso.optional(),
   due_at: NullableIso.optional(),
   recurrence: RecurrenceSchema.nullable().optional(),
@@ -108,7 +114,11 @@ const TaskUpdateInputSchema = z.object({
 
 const TMP_PREFIX = ".task_";
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+const SEQ_ID = /^[0-9]+$/;
+const SEQ_FILE = ".seq";
 const STALE_IN_PROGRESS_MS = 10 * 60 * 1000;
+// Mutex key serializing id allocation across concurrent creates.
+const CREATE_LOCK = "__create__";
 
 export class TaskStoreError extends Error {
   readonly code: string;
@@ -184,6 +194,75 @@ export class TaskStore {
     this.commentStore = options.commentStore ?? null;
     this.eventStore = options.eventStore ?? null;
     this.validateSession = options.validateSession ?? null;
+    this.adoptNonSequenceIds();
+  }
+
+  /** Renumber tasks whose id isn't a sequence number (oldest first) and
+   *  fix depends_on / parent_id references. Numeric ids are untouched. */
+  private adoptNonSequenceIds(): void {
+    if (!fs.existsSync(this.tasksDir)) return;
+    const all = this.list();
+    let seq = this.lastAllocated();
+    const mapping = new Map<string, string>();
+    for (const t of all) {
+      if (!SEQ_ID.test(t.id)) mapping.set(t.id, String((seq += 1)));
+    }
+    if (mapping.size === 0) return;
+
+    for (const t of all) {
+      const next: Task = {
+        ...t,
+        id: mapping.get(t.id) ?? t.id,
+        parent_id: t.parent_id && (mapping.get(t.parent_id) ?? t.parent_id),
+        depends_on: t.depends_on.map((d) => mapping.get(d) ?? d),
+      };
+      if (JSON.stringify(next) === JSON.stringify(t)) continue;
+      this.writeAtomicSync(this.filePath(next.id), serializeTask(next));
+      if (next.id !== t.id) fs.rmSync(this.filePath(t.id), { force: true });
+    }
+    this.writeSeqSync(seq);
+    log.info({ renumbered: Object.fromEntries(mapping) }, "renumbered task ids");
+  }
+
+  /** Highest sequence number ever allocated: counter file ⊔ ids on disk.
+   *  Disk scan self-heals a missing/stale counter; the counter prevents
+   *  id reuse after the highest-numbered task is deleted. */
+  private lastAllocated(): number {
+    let fromFile = 0;
+    try {
+      const raw = fs.readFileSync(
+        path.join(this.tasksDir, SEQ_FILE),
+        "utf-8"
+      );
+      const n = Number.parseInt(raw.trim(), 10);
+      if (Number.isFinite(n) && n > 0) fromFile = n;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    }
+    let fromDisk = 0;
+    if (fs.existsSync(this.tasksDir)) {
+      for (const name of fs.readdirSync(this.tasksDir)) {
+        const m = /^([0-9]+)\.md$/.exec(name);
+        if (!m) continue;
+        const n = Number.parseInt(m[1]!, 10);
+        if (n > fromDisk) fromDisk = n;
+      }
+    }
+    return Math.max(fromFile, fromDisk);
+  }
+
+  private writeSeqSync(n: number): void {
+    this.writeAtomicSync(path.join(this.tasksDir, SEQ_FILE), `${n}\n`);
+  }
+
+  private writeAtomicSync(file: string, content: string): void {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = path.join(
+      path.dirname(file),
+      `${TMP_PREFIX}${randomBytes(8).toString("hex")}.tmp`
+    );
+    fs.writeFileSync(tmp, content, "utf-8");
+    fs.renameSync(tmp, file);
   }
 
   setOnChange(fn: OnChangeFn | null): void {
@@ -271,8 +350,8 @@ export class TaskStore {
       );
     }
     input = parsed.data as TaskCreate;
-    const id = randomUUID();
-    return this.withMutex(id, async () => {
+    return this.withMutex(CREATE_LOCK, async () => {
+      const id = String(this.lastAllocated() + 1);
       const all = this.list();
       const byId = new Map(all.map((t) => [t.id, t]));
 
@@ -352,7 +431,7 @@ export class TaskStore {
         startAt = null;
       }
 
-      const task: Task = {
+      let task: Task = {
         id,
         title: input.title,
         status,
@@ -372,7 +451,12 @@ export class TaskStore {
         body: input.body ?? "",
       };
 
-      await this.writeFile(task);
+      // Exclusive create: another process sharing the data dir (daemon +
+      // in-process CLI chat) may have claimed this number — bump and retry.
+      while (!(await this.writeFileIfAbsent(task))) {
+        task = { ...task, id: String(Number(task.id) + 1) };
+      }
+      this.writeSeqSync(Number(task.id));
       // Emit with the honest actor (creator). Echo suppression now
       // lives at the inbox-delivery boundary, not in the scheduler —
       // and the dispatcher's periodic tick will catch self-assigned
@@ -827,6 +911,35 @@ export class TaskStore {
         // best-effort cleanup
       }
       throw e;
+    }
+  }
+
+  /** Like writeFile, but refuses to clobber: links the temp file into
+   *  place, which fails atomically if the path already exists. Returns
+   *  false on collision so the caller can re-allocate the id. */
+  private async writeFileIfAbsent(task: Task): Promise<boolean> {
+    const file = this.filePath(task.id);
+    const dir = path.dirname(file);
+    await fsp.mkdir(dir, { recursive: true });
+    const tmp = path.join(
+      dir,
+      `${TMP_PREFIX}${randomBytes(8).toString("hex")}.tmp`
+    );
+    try {
+      const fh = await fsp.open(tmp, "w");
+      try {
+        await fh.writeFile(serializeTask(task), "utf-8");
+        await fh.sync();
+      } finally {
+        await fh.close();
+      }
+      await fsp.link(tmp, file);
+      return true;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw e;
+    } finally {
+      await fsp.unlink(tmp).catch(() => {});
     }
   }
 

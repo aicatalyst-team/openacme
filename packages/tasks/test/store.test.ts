@@ -88,6 +88,80 @@ describe("TaskStore CRUD", () => {
     expect(store.get(b.id)).toBeNull();
   });
 
+  it("assigns global sequence ids starting at 1", async () => {
+    const a = await store.create({ title: "a", assignee: "x", created_by: "x" });
+    const b = await store.create({ title: "b", assignee: "y", created_by: "x" });
+    const c = await store.create({ title: "c", assignee: "z", created_by: "y" });
+    expect([a.id, b.id, c.id]).toEqual(["1", "2", "3"]);
+  });
+
+  it("never reuses an id after delete", async () => {
+    const a = await store.create({ title: "a", assignee: "x", created_by: "x" });
+    expect(a.id).toBe("1");
+    await store.delete(a.id);
+    const b = await store.create({ title: "b", assignee: "x", created_by: "x" });
+    expect(b.id).toBe("2");
+    // Survives a fresh store on the same dir (counter file, not max-scan).
+    await new TaskStore(dir).delete(b.id);
+    const c = await new TaskStore(dir).create({
+      title: "c",
+      assignee: "x",
+      created_by: "x",
+    });
+    expect(c.id).toBe("3");
+  });
+
+  it("renumbers non-sequence ids on construction and fixes references", async () => {
+    await store.create({ title: "keep", assignee: "x", created_by: "x" });
+    const fs = await import("node:fs");
+    const legacyId = "3f9b2c1a-aaaa-bbbb-cccc-1234567890ab";
+    fs.writeFileSync(
+      path.join(dir, `${legacyId}.md`),
+      [
+        "---",
+        `id: ${legacyId}`,
+        "title: legacy",
+        "status: open",
+        "assignee: x",
+        "session_id: null",
+        "created_by: x",
+        "parent_id: null",
+        "depends_on: []",
+        "start_at: null",
+        "due_at: null",
+        'created_at: "2024-01-01T00:00:00.000Z"',
+        'updated_at: "2024-01-01T00:00:00.000Z"',
+        "closed_at: null",
+        "recurrence: null",
+        "runs: 0",
+        "last_run_at: null",
+        "---",
+        "legacy body",
+      ].join("\n")
+    );
+    const dependent = await store.create({
+      title: "dependent",
+      assignee: "x",
+      created_by: "x",
+      depends_on: [legacyId],
+    });
+
+    const fresh = new TaskStore(dir);
+    expect(fresh.get(legacyId)).toBeNull();
+    const adopted = fresh.list().find((t) => t.title === "legacy");
+    expect(adopted).toBeDefined();
+    expect(adopted!.id).toMatch(/^[0-9]+$/);
+    expect(adopted!.body.trim()).toBe("legacy body");
+    expect(fresh.get(dependent.id)!.depends_on).toEqual([adopted!.id]);
+    // New creates continue past the adopted number.
+    const next = await fresh.create({
+      title: "next",
+      assignee: "x",
+      created_by: "x",
+    });
+    expect(Number(next.id)).toBe(Number(adopted!.id) + 1);
+  });
+
   it("list skips dotfiles and malformed", async () => {
     const t = await store.create({
       title: "ok",

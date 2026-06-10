@@ -570,7 +570,7 @@ function TasksPageInner() {
                           className="flex items-baseline gap-2 text-sm"
                         >
                           <span className="font-mono text-[12px] tabular-nums text-ink-faint">
-                            {t.id.slice(0, 8)}
+                            {`#${t.id}`}
                           </span>
                           <span className="truncate text-ink">{t.title}</span>
                         </li>
