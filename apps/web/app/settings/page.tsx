@@ -924,7 +924,7 @@ export default function SettingsPage() {
                             <Label htmlFor={`key-${provider.id}`}>
                               {provider.name}
                             </Label>
-                            <span className="font-mono text-[10px] text-muted-foreground">
+                            <span className="font-mono text-[10px] text-ink-soft">
                               {provider.envVar}
                             </span>
                             {configuredKeys[provider.id] && (
@@ -1646,7 +1646,7 @@ export default function SettingsPage() {
                                 <Label htmlFor={`web-key-${p.id}`}>
                                   {p.name}
                                 </Label>
-                                <span className="font-mono text-[10px] text-muted-foreground">
+                                <span className="font-mono text-[10px] text-ink-soft">
                                   {p.envVar}
                                 </span>
                                 {isConfigured && (
@@ -1910,7 +1910,7 @@ export default function SettingsPage() {
                                     <Label htmlFor={`browser-key-${p.id}`}>
                                       {p.name} API key
                                     </Label>
-                                    <span className="font-mono text-[10px] text-muted-foreground">
+                                    <span className="font-mono text-[10px] text-ink-soft">
                                       {p.envVar}
                                     </span>
                                     {isConfigured && (

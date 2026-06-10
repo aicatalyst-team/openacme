@@ -958,7 +958,7 @@ function AgentsPageInner() {
                                   <div className="flex flex-col items-start">
                                     <span>{m.label}</span>
                                     {m.hint && (
-                                      <span className="text-[10px] text-muted-foreground">
+                                      <span className="text-[10px] text-ink-soft">
                                         {m.hint}
                                       </span>
                                     )}
@@ -966,7 +966,7 @@ function AgentsPageInner() {
                                 </SelectItem>
                               ))}
                               <SelectItem value={CUSTOM_MODEL}>
-                                <span className="text-muted-foreground">
+                                <span className="text-ink-soft">
                                   Custom model id…
                                 </span>
                               </SelectItem>

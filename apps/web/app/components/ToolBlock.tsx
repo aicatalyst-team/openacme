@@ -147,6 +147,8 @@ function UnknownToolBlock({
         type="button"
         onClick={() => hasIO && setOpen((o) => !o)}
         disabled={!hasIO}
+        aria-expanded={hasIO ? open : undefined}
+        aria-label={`${toolName} tool call — raw input and output`}
         className={cn(
           "flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors",
           hasIO &&

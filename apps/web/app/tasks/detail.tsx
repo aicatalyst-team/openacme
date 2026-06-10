@@ -161,14 +161,14 @@ export function TaskDetailPanel({
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <Label>Status</Label>
+            <Label htmlFor="status">Status</Label>
             <Select
               value={draft.status}
               onValueChange={(v) =>
                 onChange({ ...draft, status: v as TaskStatus })
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="status" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

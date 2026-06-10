@@ -131,7 +131,7 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
       // group-hover doesn't fire on tap, so opacity-100 under
       // @media(hover:none) keeps the delete reachable on phones.
       className={cn(
-        "shrink-0 p-1 text-ink-faint opacity-0 transition-opacity hover:bg-paper-rule/60 hover:text-plot-red focus-visible:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-plot-red group-hover:opacity-100 [@media(hover:none)]:opacity-60",
+        "flex shrink-0 items-center justify-center p-1 text-ink-faint opacity-0 transition-opacity hover:bg-paper-rule/60 hover:text-plot-red focus-visible:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-plot-red group-hover:opacity-100 [@media(hover:none)]:opacity-60 [@media(hover:none)]:size-11",
         size === "compact" ? "size-6" : "size-7"
       )}
     >
@@ -164,6 +164,7 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
           aria-hidden
           title={statusLabel}
         />
+        <span className="sr-only">{statusLabel}</span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-medium text-ink">
             {s.title || "Untitled session"}

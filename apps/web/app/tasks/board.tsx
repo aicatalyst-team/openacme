@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -60,6 +60,9 @@ export function TasksBoard({ tasks, selectedId, onPick, onMove }: TasksBoardProp
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
   );
+  // Drag-target affordance only renders mid-drag; at rest an empty
+  // column stays quiet. (Keyboard path: open the card, change Status.)
+  const [dragging, setDragging] = useState(false);
 
   const grouped = useMemo(() => {
     const out = new Map<TaskStatus, Task[]>();
@@ -85,8 +88,19 @@ export function TasksBoard({ tasks, selectedId, onPick, onMove }: TasksBoardProp
   };
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div className="flex flex-1 gap-3 overflow-x-auto p-3">
+    <DndContext
+      sensors={sensors}
+      onDragStart={() => setDragging(true)}
+      onDragCancel={() => setDragging(false)}
+      onDragEnd={(e) => {
+        setDragging(false);
+        handleDragEnd(e);
+      }}
+    >
+      {/* Columns stack vertically under md — a fixed 288px column already
+          overflows narrow phones, so the horizontal-scroll board is
+          desktop-only. */}
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 md:flex-row md:overflow-y-hidden md:overflow-x-auto">
         {STATUS_ORDER.map((status) => (
           <BoardColumn
             key={status}
@@ -94,6 +108,7 @@ export function TasksBoard({ tasks, selectedId, onPick, onMove }: TasksBoardProp
             tasks={grouped.get(status) ?? []}
             selectedId={selectedId}
             onPick={onPick}
+            dragging={dragging}
           />
         ))}
       </div>
@@ -106,11 +121,13 @@ function BoardColumn({
   tasks,
   selectedId,
   onPick,
+  dragging,
 }: {
   status: TaskStatus;
   tasks: Task[];
   selectedId: string | null;
   onPick: (id: string) => void;
+  dragging: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const ids = useMemo(() => tasks.map((t) => t.id), [tasks]);
@@ -119,7 +136,7 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex w-72 shrink-0 flex-col border border-paper-rule bg-paper-sunk transition-colors",
+        "flex w-full shrink-0 flex-col border border-paper-rule bg-paper-sunk transition-colors md:w-72",
         isOver && "border-plot-red bg-paper"
       )}
     >
@@ -144,7 +161,9 @@ function BoardColumn({
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           {tasks.length === 0 ? (
             <div className="flex flex-1 items-center justify-center px-2 py-6">
-              <span className="label-faceplate text-ink-faint">accepts drops</span>
+              {dragging && (
+                <span className="label-faceplate text-ink-faint">accepts drops</span>
+              )}
             </div>
           ) : (
             tasks.map((t) => (
