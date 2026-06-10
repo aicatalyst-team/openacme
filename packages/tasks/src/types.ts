@@ -15,6 +15,15 @@ export const TaskStatusSchema = z.enum(TASK_STATUSES);
 export const NullableIso = z.string().datetime({ offset: true }).nullable();
 const IsoString = z.string().datetime({ offset: true });
 
+/**
+ * Task ids are global sequence numbers ("1", "2", …) stored as strings.
+ * Hand-edited YAML may carry them unquoted (parsed as numbers) — coerce
+ * rather than reject so a manual edit can't make a task file malformed.
+ */
+export const TaskIdSchema = z
+  .union([z.string().min(1), z.number().int().nonnegative()])
+  .transform((v) => String(v));
+
 export const RECURRENCE_SESSION_MODES = ["fresh", "reuse"] as const;
 export type RecurrenceSession = (typeof RECURRENCE_SESSION_MODES)[number];
 
@@ -55,7 +64,7 @@ export type Recurrence = z.infer<typeof RecurrenceSchema>;
 
 export const TaskFrontmatterSchema = z
   .object({
-    id: z.string().min(1),
+    id: TaskIdSchema,
     title: z.string().min(1).max(500),
     status: TaskStatusSchema,
     assignee: z.string().min(1),
@@ -73,8 +82,8 @@ export const TaskFrontmatterSchema = z
      */
     session_id: z.string().min(1).nullable().default(null),
     created_by: z.string().min(1),
-    parent_id: z.string().min(1).nullable().default(null),
-    depends_on: z.array(z.string().min(1)).default([]),
+    parent_id: TaskIdSchema.nullable().default(null),
+    depends_on: z.array(TaskIdSchema).default([]),
     start_at: NullableIso.default(null),
     due_at: NullableIso.default(null),
     created_at: IsoString,

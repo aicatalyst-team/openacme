@@ -101,7 +101,7 @@ export function TaskDetailPanel({
     }
   };
 
-  const shortTaskId = selected.id.slice(0, 8);
+  const shortTaskId = `#${selected.id}`;
   const sessionId = draft.session_id;
   const shortSession = sessionId ? sessionId.slice(0, 8) : null;
   const assigneeKnown = agents.some((a) => a.id === draft.assignee);
@@ -312,7 +312,7 @@ export function TaskDetailPanel({
                   key={id}
                   className="inline-flex items-baseline gap-1.5"
                 >
-                  <span className="text-ink-soft">{id.slice(0, 8)}</span>
+                  <span className="text-ink-soft">{`#${id}`}</span>
                   <span className="truncate text-ink-faint">
                     {titleByDepId.get(id) ?? "(unknown)"}
                   </span>
@@ -327,7 +327,7 @@ export function TaskDetailPanel({
               Parent
             </span>
             <span className="col-span-3 inline-flex min-w-0 items-baseline gap-1.5 text-ink-soft">
-              <span>{selected.parent_id.slice(0, 8)}</span>
+              <span>{`#${selected.parent_id}`}</span>
               <span className="truncate text-ink-faint">
                 {titleByDepId.get(selected.parent_id) ?? "(unknown)"}
               </span>
@@ -733,7 +733,7 @@ function EventDescription({
         <span className="flex flex-wrap items-baseline gap-1">
           <span className="text-ink-faint">dep</span>
           <span className="text-ink-soft">
-            {depId ? depId.slice(0, 8) : "?"}
+            {depId ? `#${depId}` : "?"}
           </span>
           {depTitle && <span className="text-ink">{depTitle}</span>}
           <span className="text-ink-faint">done, now runnable</span>

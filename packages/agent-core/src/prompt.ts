@@ -111,7 +111,10 @@ MEMORY [${pct}% — ${used}/${limit} chars] · ${snapshot.entryCount} ${entryWor
  * recurring-done semantic (done → open self-reset).
  */
 const TASKS_GUIDANCE =
-  "Tasks are persistent units of work backed by markdown files. A periodic " +
+  "Tasks are persistent units of work backed by markdown files, numbered by " +
+  "a single global sequence (1, 2, …) shared by the whole workforce — pass " +
+  "that number as `id` to the task tools.\n" +
+  "A periodic " +
   "dispatcher (60s tick) checks the board and spawns you when there's something " +
   "to do — a new assignment, an `in_progress` task you're working on, a ready " +
   "open task, or a comment from another agent / human in your inbox.\n" +

@@ -83,15 +83,14 @@ export function TasksOverlay({
 }
 
 function TaskRow({ task }: { task: Task }) {
-  const shortId = task.id.slice(0, 8);
   const recurrence = task.recurrence ? formatRecurrence(task) : null;
   const blocked =
     task.status === "blocked" && task.depends_on.length > 0
-      ? `↳ blocked on ${task.depends_on.map((d) => d.slice(0, 8)).join(", ")}`
+      ? `↳ blocked on ${task.depends_on.map((d) => `#${d}`).join(", ")}`
       : null;
   return (
     <Box>
-      <Text dimColor>{`  [${shortId}] `}</Text>
+      <Text dimColor>{`  [#${task.id}] `}</Text>
       <Text>{task.title}</Text>
       {recurrence && <Text color="yellow">{`  ⟲ ${recurrence}`}</Text>}
       {blocked && <Text dimColor>{`  ${blocked}`}</Text>}

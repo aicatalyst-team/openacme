@@ -104,13 +104,19 @@ export function formatOutput(output: unknown, errorText?: string): string {
   return safeStringify(output);
 }
 
+// Task ids are sequence numbers; tool args carry them as strings or ints.
+export function taskIdStr(v: unknown): string | undefined {
+  return typeof v === "string" || typeof v === "number" ? String(v) : undefined;
+}
+
 export function pickTaskId(out: Record<string, unknown> | null): string | undefined {
   if (!out) return undefined;
   const task = out["task"];
-  if (isObj(task) && typeof task["id"] === "string") return task["id"];
-  if (typeof out["task_id"] === "string") return out["task_id"] as string;
-  if (typeof out["id"] === "string") return out["id"] as string;
-  return undefined;
+  if (isObj(task)) {
+    const id = taskIdStr(task["id"]);
+    if (id) return id;
+  }
+  return taskIdStr(out["task_id"]) ?? taskIdStr(out["id"]);
 }
 
 export function countResults(out: Record<string, unknown> | null): number | null {

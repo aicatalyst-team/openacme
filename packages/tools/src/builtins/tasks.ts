@@ -68,6 +68,13 @@ const RecurrenceParamsSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+// Task ids are global sequence numbers; models pass them as strings or
+// bare integers — both name the same task.
+const TaskIdParam = z.union([z.string().min(1), z.number().int()]);
+function taskId(v: string | number): string {
+  return String(v);
+}
+
 export interface TaskStoreBindings {
   store: TaskStore;
 }
@@ -168,7 +175,7 @@ registry.register({
   toolset: "tasks",
   description: TASK_VIEW_DESCRIPTION,
   parameters: z.object({
-    id: z.string().min(1).describe("Task id."),
+    id: TaskIdParam.describe("Task id (sequence number, e.g. 14)."),
   }),
   emoji: "🔍",
   parallelSafe: true,
@@ -176,10 +183,11 @@ registry.register({
     const b = requireBindings();
     if ("error" in b) return JSON.stringify({ ok: false, error: b.error });
 
-    const a = args as { id: string };
-    const task = b.store.get(a.id);
+    const a = args as { id: string | number };
+    const id = taskId(a.id);
+    const task = b.store.get(id);
     if (!task) {
-      return JSON.stringify({ ok: false, error: `Task ${a.id} not found.` });
+      return JSON.stringify({ ok: false, error: `Task ${id} not found.` });
     }
     return JSON.stringify({ ok: true, task });
   },
@@ -220,12 +228,11 @@ registry.register({
       .describe(
         "Markdown description / acceptance criteria / working notes."
       ),
-    parent_id: z
-      .string()
-      .optional()
-      .describe("Parent task id (for subtask hierarchy)."),
+    parent_id: TaskIdParam.optional().describe(
+      "Parent task id (for subtask hierarchy)."
+    ),
     depends_on: z
-      .array(z.string())
+      .array(TaskIdParam)
       .optional()
       .describe(
         "Task ids that must reach `done` before this one can start."
@@ -264,13 +271,15 @@ registry.register({
       title: string;
       assignee: string;
       body?: string;
-      parent_id?: string;
-      depends_on?: string[];
+      parent_id?: string | number;
+      depends_on?: (string | number)[];
       start_at?: string;
       due_at?: string;
       session?: string;
       recurrence?: Recurrence;
     };
+    const parentId = a.parent_id !== undefined ? taskId(a.parent_id) : null;
+    const dependsOn = (a.depends_on ?? []).map(taskId);
     const agentId = getCurrentAgentId();
     if (!agentId) {
       return JSON.stringify({
@@ -309,8 +318,8 @@ registry.register({
     // Subtask: if assignee matches the parent's and no session was decided,
     // inherit parent's session.
     let inheritedSession = sessionId;
-    if (a.parent_id) {
-      const parent = b.store.get(a.parent_id);
+    if (parentId) {
+      const parent = b.store.get(parentId);
       if (parent && parent.assignee === a.assignee && !inheritedSession) {
         inheritedSession = parent.session_id;
       }
@@ -322,8 +331,8 @@ registry.register({
         assignee: a.assignee,
         created_by: agentId,
         body: a.body,
-        parent_id: a.parent_id ?? null,
-        depends_on: a.depends_on ?? [],
+        parent_id: parentId,
+        depends_on: dependsOn,
         start_at: a.start_at ?? undefined,
         due_at: a.due_at ?? null,
         session_id: inheritedSession,
@@ -383,7 +392,7 @@ registry.register({
   toolset: "tasks",
   description: TASK_UPDATE_DESCRIPTION,
   parameters: z.object({
-    id: z.string().min(1).describe("Task id."),
+    id: TaskIdParam.describe("Task id (sequence number, e.g. 14)."),
     title: z.string().max(500).optional(),
     body: z.string().optional().describe("Replacement body (markdown)."),
     status: z.enum(TASK_STATUSES).optional(),
@@ -396,7 +405,7 @@ registry.register({
       .nullable()
       .optional()
       .describe("Bind to a session, or null to detach."),
-    depends_on: z.array(z.string()).optional(),
+    depends_on: z.array(TaskIdParam).optional(),
     start_at: z.string().nullable().optional(),
     due_at: z.string().nullable().optional(),
     recurrence: RecurrenceParamsSchema.nullable()
@@ -410,17 +419,18 @@ registry.register({
     if ("error" in b) return JSON.stringify({ ok: false, error: b.error });
 
     const a = args as {
-      id: string;
+      id: string | number;
       title?: string;
       body?: string;
       status?: TaskStatus;
       assignee?: string;
       session_id?: string | null;
-      depends_on?: string[];
+      depends_on?: (string | number)[];
       start_at?: string | null;
       due_at?: string | null;
       recurrence?: Recurrence | null;
     };
+    const id = taskId(a.id);
     const agentId = getCurrentAgentId();
     if (!agentId) {
       return JSON.stringify({
@@ -436,15 +446,15 @@ registry.register({
     const closingDone = a.status === "done";
     let warnMissingResult = false;
     if (closingDone) {
-      const existing = b.store.get(a.id);
+      const existing = b.store.get(id);
       if (existing && existing.assignee === agentId) {
-        warnMissingResult = b.store.latestResult(a.id)?.author !== agentId;
+        warnMissingResult = b.store.latestResult(id)?.author !== agentId;
       }
     }
 
     try {
       const task = await b.store.update(
-        a.id,
+        id,
         {
           title: a.title,
           body: a.body,
@@ -453,7 +463,7 @@ registry.register({
           ...(Object.prototype.hasOwnProperty.call(a, "session_id")
             ? { session_id: a.session_id }
             : {}),
-          depends_on: a.depends_on,
+          depends_on: a.depends_on?.map(taskId),
           ...(Object.prototype.hasOwnProperty.call(a, "start_at")
             ? { start_at: a.start_at }
             : {}),
@@ -512,7 +522,7 @@ registry.register({
   toolset: "tasks",
   description: TASK_COMMENT_DESCRIPTION,
   parameters: z.object({
-    id: z.string().min(1).describe("Task id."),
+    id: TaskIdParam.describe("Task id (sequence number, e.g. 14)."),
     body: z.string().min(1).describe("Comment body (markdown)."),
     kind: z
       .enum(["result"])
@@ -528,7 +538,8 @@ registry.register({
     const b = requireBindings();
     if ("error" in b) return JSON.stringify({ ok: false, error: b.error });
 
-    const a = args as { id: string; body: string; kind?: "result" };
+    const a = args as { id: string | number; body: string; kind?: "result" };
+    const id = taskId(a.id);
     const agentId = getCurrentAgentId();
     if (!agentId) {
       return JSON.stringify({
@@ -546,9 +557,9 @@ registry.register({
       });
     }
 
-    const task = b.store.get(a.id);
+    const task = b.store.get(id);
     if (!task) {
-      return JSON.stringify({ ok: false, error: `Task ${a.id} not found.` });
+      return JSON.stringify({ ok: false, error: `Task ${id} not found.` });
     }
 
     if (a.kind === "result" && task.assignee !== agentId) {
@@ -561,7 +572,7 @@ registry.register({
 
     try {
       const comment = await b.store.addComment({
-        taskId: a.id,
+        taskId: id,
         author: agentId,
         body: a.body,
         kind: a.kind ?? null,
@@ -602,7 +613,7 @@ registry.register({
   toolset: "tasks",
   description: TASK_COMMENTS_DESCRIPTION,
   parameters: z.object({
-    id: z.string().min(1).describe("Task id."),
+    id: TaskIdParam.describe("Task id (sequence number, e.g. 14)."),
     limit: z
       .number()
       .int()
@@ -630,21 +641,22 @@ registry.register({
     if ("error" in b) return JSON.stringify({ ok: false, error: b.error });
 
     const a = args as {
-      id: string;
+      id: string | number;
       limit?: number;
       sinceTs?: number;
       kinds?: string[];
     };
+    const id = taskId(a.id);
 
-    if (!b.store.get(a.id)) {
-      return JSON.stringify({ ok: false, error: `Task ${a.id} not found.` });
+    if (!b.store.get(id)) {
+      return JSON.stringify({ ok: false, error: `Task ${id} not found.` });
     }
     // Filter (not validate) — unknown kinds drop silently.
     const validKindSet = new Set<string>(COMMENT_KINDS);
     const kinds = a.kinds
       ? (a.kinds.filter((k) => validKindSet.has(k)) as CommentKind[])
       : undefined;
-    const comments = b.store.listComments(a.id, {
+    const comments = b.store.listComments(id, {
       limit: a.limit ?? 50,
       sinceTs: a.sinceTs,
       kinds,
