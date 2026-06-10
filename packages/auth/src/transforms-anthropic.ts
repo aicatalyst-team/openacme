@@ -252,9 +252,12 @@ export function transformAnthropicOAuthBody(body: unknown): unknown {
     ) {
       const rest = entry.text.slice(SYSTEM_IDENTITY.length).replace(/^\n+/, "");
       const { text: _t, ...rest_props } = entry;
-      const { cache_control: _cc, ...identity_props } = rest_props as Record<string, unknown>;
-      split.push({ ...identity_props, type: "text", text: SYSTEM_IDENTITY });
-      if (rest.length > 0) split.push({ ...rest_props, type: "text", text: rest });
+      // One block becomes two; only one may keep the cache breakpoint. It
+      // must be the identity entry — the remainder gets moved into the first
+      // user message below, which would silently drop the marker.
+      const { cache_control: _cc, ...stripped_props } = rest_props as Record<string, unknown>;
+      split.push({ ...rest_props, type: "text", text: SYSTEM_IDENTITY });
+      if (rest.length > 0) split.push({ ...stripped_props, type: "text", text: rest });
     } else {
       split.push(entry);
     }
@@ -275,13 +278,21 @@ export function transformAnthropicOAuthBody(body: unknown): unknown {
   const BILLING_PREFIX = "x-anthropic-billing-header";
   const kept: SystemEntry[] = [];
   const moved: string[] = [];
+  let movedCacheControl: unknown;
   for (const entry of system) {
     const txt = entry.text ?? "";
     if (txt.startsWith(BILLING_PREFIX) || txt.startsWith(SYSTEM_IDENTITY)) {
       kept.push(entry);
     } else if (txt.length > 0) {
       moved.push(txt);
+      if (entry["cache_control"]) movedCacheControl = entry["cache_control"];
     }
+  }
+  // Moving entries keeps only their text; re-home a lost breakpoint on the
+  // last kept system entry so a system-level marker always reaches the wire.
+  if (movedCacheControl && kept.length > 0 && !kept.some((e) => e["cache_control"])) {
+    const last = kept.length - 1;
+    kept[last] = { ...kept[last], cache_control: movedCacheControl };
   }
   if (moved.length > 0 && Array.isArray(parsed.messages)) {
     const firstUser = parsed.messages.find((m) => m.role === "user");

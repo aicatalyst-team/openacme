@@ -17,3 +17,4 @@ export {
   type ProviderCredentials,
   type CredentialSource,
 } from "./credentials.js";
+export { resolveSubagentModel } from "./subagent-model.js";

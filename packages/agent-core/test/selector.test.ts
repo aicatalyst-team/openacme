@@ -26,6 +26,7 @@ const { getModelMock } = vi.hoisted(() => ({
 }));
 vi.mock("@openacme/llm-provider", () => ({
   getModel: getModelMock,
+  resolveSubagentModel: (m: unknown) => m,
   supportsToolResultMedia: () => false,
 }));
 

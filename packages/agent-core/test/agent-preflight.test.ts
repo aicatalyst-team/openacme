@@ -37,6 +37,7 @@ vi.mock("ai", async () => {
 
 vi.mock("@openacme/llm-provider", () => ({
   getModel: getModelMock,
+  resolveSubagentModel: (m: unknown) => m,
   getEffectiveContextWindow: getEffectiveContextWindowMock,
   supportsToolResultMedia: () => false,
 }));

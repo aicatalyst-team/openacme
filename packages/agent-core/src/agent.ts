@@ -13,6 +13,7 @@ import * as path from "node:path";
 import {
   getModel,
   getEffectiveContextWindow,
+  resolveSubagentModel,
   supportsToolResultMedia,
 } from "@openacme/llm-provider";
 import { createLogger } from "@openacme/config/logger";
@@ -41,10 +42,6 @@ import {
   extractTitleInputs,
   sliceFallbackTitle,
 } from "./title.js";
-import {
-  anthropicCachePolicy,
-  applyAnthropicCacheControl,
-} from "./cache-control.js";
 import {
   uiToModelMessages,
   sanitizeStoredHistory,
@@ -319,6 +316,8 @@ export class Agent {
     toolFilter?: ReadonlySet<string>;
     /** Telemetry tag override (Logfire). No-op unless OPENACME_TELEMETRY=1. */
     telemetryFunctionId?: string;
+    /** Model override for this call — forks use the cheap subagent tier. */
+    modelOverride?: import("@openacme/config").ModelConfig;
     /** Hook between LLM steps — used by `runAutonomous` to inject events
      *  that arrived mid-turn. Forwarded to `streamText` unchanged. */
     prepareStep?: Parameters<typeof streamText>[0]["prepareStep"];
@@ -352,50 +351,23 @@ export class Agent {
     });
 
     const system = this.getSystemPrompt(opts.sessionId);
-    const { system: cachedSystem, messages: cachedMessages } =
-      this.applyPromptCaching(system, messages);
 
     return streamText({
-      model: getModel(this.config.model),
-      system: cachedSystem,
-      messages: cachedMessages,
+      model: getModel(opts.modelOverride ?? this.config.model),
+      system,
+      messages,
       tools: tools as Parameters<typeof streamText>[0]["tools"],
       stopWhen: opts.stopWhen ?? stepCountIs(this.config.maxSteps),
       maxOutputTokens: this.config.maxOutputTokens,
       abortSignal: opts.signal,
       prepareStep: opts.prepareStep,
       onError: opts.onError,
-      // Anthropic native cache-control requires the system prompt to live
-      // in `messages` as a `role: "system"` entry; SDK warns by default.
-      allowSystemInMessages: true,
       experimental_telemetry: {
         isEnabled: true,
         functionId: opts.telemetryFunctionId ?? this.config.id,
         metadata: { sessionId: opts.sessionId },
       },
     });
-  }
-
-  // Native Anthropic only: fold system into messages to attach cacheControl
-  // breakpoints. OpenRouter Claude is handled at the fetch layer.
-  private applyPromptCaching(
-    system: string,
-    messages: import("ai").ModelMessage[]
-  ): {
-    system: string | undefined;
-    messages: import("ai").ModelMessage[];
-  } {
-    if (anthropicCachePolicy(this.config.model) !== "native") {
-      return { system, messages };
-    }
-    const withSystem: import("ai").ModelMessage[] = [
-      { role: "system", content: system },
-      ...messages,
-    ];
-    return {
-      system: undefined,
-      messages: applyAnthropicCacheControl(withSystem, this.config.model.cacheTtl),
-    };
   }
 
   /**
@@ -1217,12 +1189,10 @@ export class Agent {
             "Pre-compaction memory flush. Older messages in this conversation will be summarized away shortly. Use the `memory` tool to save any durable facts, preferences, decisions, or environment details that should survive into future sessions. If nothing is worth saving, respond with a single word and stop.",
         },
       ];
-      const { system: cachedSystem, messages: cachedMessages } =
-        this.applyPromptCaching(system, flushMessages);
       await generateText({
-        model: getModel(this.config.model),
-        system: cachedSystem,
-        messages: cachedMessages,
+        model: getModel(resolveSubagentModel(this.config.model)),
+        system,
+        messages: flushMessages,
         tools: tools as Parameters<typeof generateText>[0]["tools"],
         stopWhen: stepCountIs(this.config.maxSteps),
         experimental_telemetry: {

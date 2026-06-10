@@ -20,6 +20,7 @@ import {
   tryReimportClaudeCode,
 } from "@openacme/auth";
 import { injectAnthropicCacheControl } from "./openrouter-cache.js";
+import { anthropicCacheMiddleware } from "./anthropic-cache.js";
 
 const log = createLogger("llm-provider");
 
@@ -492,7 +493,12 @@ const providerFactories: Record<
         return oauthNow ? transformAnthropicOAuthResponse(res) : res;
       },
     });
-    return provider(config.model);
+    // Per-request cache markers: transformParams runs on every step of a
+    // multi-step turn, so the cache frontier advances with the prompt tail.
+    return wrapLanguageModel({
+      model: provider(config.model),
+      middleware: anthropicCacheMiddleware(config.cacheTtl),
+    });
   },
 
   google: (config) => {

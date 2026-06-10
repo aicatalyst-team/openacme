@@ -62,11 +62,6 @@ export {
   extractErrorText,
 } from "./error-classifier.js";
 export type { ClassifiedError, CompressionReason } from "./error-classifier.js";
-export {
-  applyAnthropicCacheControl,
-  anthropicCachePolicy,
-} from "./cache-control.js";
-export type { CacheTtl } from "./cache-control.js";
 export type {
   TokenUsage,
   AgentConfig,

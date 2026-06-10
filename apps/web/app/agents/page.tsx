@@ -275,10 +275,10 @@ function AgentsPageInner() {
 
   const presets: ModelPreset[] = currentProvider?.models ?? [];
 
-  // Mirrors `anthropicCachePolicy` in @openacme/agent-core. The OR is
-  // load-bearing, not defensive: OpenRouter ships floating aliases under the
-  // `~anthropic/claude-*-latest` prefix (tilde, not slash) which `startsWith
-  // ("anthropic/")` misses but `includes("claude")` catches. Keep both.
+  // Mirrors the OpenRouter Claude detection in @openacme/llm-provider's
+  // registry. The OR is load-bearing, not defensive: OpenRouter ships floating
+  // aliases under the `~anthropic/claude-*-latest` prefix (tilde, not slash)
+  // which `startsWith("anthropic/")` misses but `includes("claude")` catches.
   const isClaudeModel = useMemo(() => {
     if (formData.provider === "anthropic") return true;
     if (formData.provider === "openrouter") {
