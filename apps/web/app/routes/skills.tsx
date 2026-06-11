@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
-import { Plus, Search, Trash2, BookOpen, Compass, Pipette } from "lucide-react";
+import { Plus, Search, Trash2, BookOpen, Compass, Pencil, Pipette } from "lucide-react";
 import { LoadingHairline } from "@/app/components/ui/loading-hairline";
 import { ActiveMarker } from "@/app/components/ui/active-marker";
 import { toast } from "sonner";
@@ -480,6 +480,10 @@ function SkillsPage() {
                     onPickRelated={(name) =>
                       void navigate({ to: "/skills", search: { name } })
                     }
+                    onSaved={(updated) => {
+                      setSelectedSkill(updated);
+                      void loadSkills();
+                    }}
                   />
               </div>
             ) : skills.length === 0 ? (
@@ -531,9 +535,11 @@ function SkillsPage() {
 function SkillDetailTabs({
   skill,
   onPickRelated,
+  onSaved,
 }: {
   skill: Skill;
   onPickRelated: (name: string) => void;
+  onSaved: (updated: Skill) => void;
 }) {
   // SKILL.md bodies reference sibling files ("see references/api.md") —
   // linkify spans that resolve inside the skill's folder.
@@ -549,6 +555,60 @@ function SkillDetailTabs({
   const [previewTarget, setPreviewTarget] =
     useState<FilePreviewTarget | null>(null);
 
+  // View-is-the-editor: pencil flips the body/description/tags into
+  // fields, PUT /api/skills/:name persists. Name is fixed (folder id).
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState({
+    description: skill.description,
+    tags: skill.tags.join(", "),
+    body: skill.body,
+  });
+  useEffect(() => {
+    setEditing(false);
+    setDraft({
+      description: skill.description,
+      tags: skill.tags.join(", "),
+      body: skill.body,
+    });
+  }, [skill.name, skill.description, skill.tags, skill.body]);
+
+  const saveSkill = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/skills/${encodeURIComponent(skill.name)}`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            description: draft.description.trim(),
+            tags: draft.tags
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean),
+            body: draft.body,
+          }),
+        }
+      );
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(data.error || res.statusText);
+      }
+      onSaved((await res.json()) as Skill);
+      setEditing(false);
+      toast.success("Skill updated");
+    } catch (err) {
+      toast.error("Failed to update skill", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <>
       <Tabs defaultValue="skill" className="mt-1">
@@ -558,11 +618,85 @@ function SkillDetailTabs({
         </TabsList>
         <TabsContent value="skill">
           <div className="space-y-4">
-            <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
-              <Markdown fileLinks={fileLinks} onOpenFile={setPreviewTarget}>
-                {skill.body || "(No instructions)"}
-              </Markdown>
-            </div>
+            {!editing && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  aria-label="Edit skill"
+                  title="Edit skill"
+                  className="p-1 text-ink-faint transition-colors hover:text-ink"
+                >
+                  <Pencil className="size-3.5" aria-hidden />
+                </button>
+              </div>
+            )}
+            {editing ? (
+              <div className="space-y-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="skill-edit-desc">Description</Label>
+                  <Input
+                    id="skill-edit-desc"
+                    value={draft.description}
+                    onChange={(e) =>
+                      setDraft({ ...draft, description: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="skill-edit-tags">
+                    Tags (comma-separated)
+                  </Label>
+                  <Input
+                    id="skill-edit-tags"
+                    value={draft.tags}
+                    onChange={(e) =>
+                      setDraft({ ...draft, tags: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="skill-edit-body">
+                    Instructions (Markdown)
+                  </Label>
+                  <Textarea
+                    id="skill-edit-body"
+                    value={draft.body}
+                    onChange={(e) =>
+                      setDraft({ ...draft, body: e.target.value })
+                    }
+                    rows={16}
+                    className="font-mono text-[12px]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" disabled={saving} onClick={() => void saveSkill()}>
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={saving}
+                    onClick={() => {
+                      setDraft({
+                        description: skill.description,
+                        tags: skill.tags.join(", "),
+                        body: skill.body,
+                      });
+                      setEditing(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
+                <Markdown fileLinks={fileLinks} onOpenFile={setPreviewTarget}>
+                  {skill.body || "(No instructions)"}
+                </Markdown>
+              </div>
+            )}
 
             {skill.relatedSkills.length > 0 && (
               <div>

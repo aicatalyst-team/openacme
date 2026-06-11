@@ -919,6 +919,39 @@ export async function createApp(config: Config): Promise<{ app: Hono; manager: A
     }
   });
 
+  // Edit an existing skill's frontmatter + body. The name is fixed —
+  // it's the folder identity; renames are delete + recreate.
+  app.put("/api/skills/:name", async (c) => {
+    const name = c.req.param("name");
+    const existing = manager.skillRegistry.getSkill(name);
+    if (!existing) return c.json({ error: "Skill not found" }, 404);
+
+    let body: { description?: string; tags?: string[]; body?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+    const description = body.description ?? existing.description;
+    if (!description) {
+      return c.json({ error: "description is required" }, 400);
+    }
+
+    try {
+      const skillsDir = path.resolve(config.dataDir, config.skills.directory);
+      const skill = manager.skillRegistry.saveSkill(
+        skillsDir,
+        name,
+        description,
+        body.tags ?? existing.tags,
+        body.body ?? existing.body
+      );
+      return c.json(skill);
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 500);
+    }
+  });
+
   app.delete("/api/skills/:name", (c) => {
     const name = c.req.param("name");
     const skillsDir = path.resolve(config.dataDir, config.skills.directory);
