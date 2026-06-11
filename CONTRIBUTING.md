@@ -4,7 +4,7 @@ Thanks for working on OpenAcme. This guide currently focuses on the **release pr
 
 ## Releasing
 
-OpenAcme uses [Changesets](https://github.com/changesets/changesets) to manage versions, changelogs, and npm publishing across the workspace. The release workflow at [.github/workflows/release.yml](.github/workflows/release.yml) is **manually triggered** — releases are deliberate, never automatic.
+OpenAcme uses [Changesets](https://github.com/changesets/changesets) to manage versions, changelogs, and npm publishing across the workspace. Version bookkeeping is automatic: [.github/workflows/version.yml](.github/workflows/version.yml) runs on every push to `main` and keeps a **"Version Packages"** PR up to date with the accumulated bumps and CHANGELOG entries. Publishing is **manual** — [.github/workflows/release.yml](.github/workflows/release.yml) only runs via `workflow_dispatch`; nothing reaches npm until you trigger it.
 
 ### What gets published
 
@@ -46,20 +46,16 @@ Just don't tick it in the prompt — it stays at its current version.
 
 ### Shipping: pick one of two flows
 
-#### Flow A — PR-reviewed (recommended once you have collaborators)
+#### Flow A — PR-reviewed (default)
 
-1. Push your code + the changeset file to `main`.
-2. Trigger the workflow:
+1. Merge your PR (code + changeset file) into `main`.
+2. The version workflow runs on push and opens or updates the **"Version Packages"** PR — version bumps in every affected `package.json` plus CHANGELOG entries. Subsequent merges fold into the same PR until it's merged.
+3. When you're ready to release, review and merge that PR.
+4. Trigger the release workflow:
    ```sh
    gh workflow run release.yml --repo sandydasari/openacme
    ```
-   It opens a **"Version Packages"** PR that bumps versions in every affected `package.json` and updates each package's `CHANGELOG.md`.
-3. Review, merge that PR.
-4. Trigger the workflow again:
-   ```sh
-   gh workflow run release.yml --repo sandydasari/openacme
-   ```
-   No pending changesets this time, so it publishes everything whose local version is ahead of the registry.
+   No pending changesets at this point, so it publishes everything whose local version is ahead of the registry.
 
 #### Flow B — One-shot (good for solo / trivial patches)
 
@@ -69,7 +65,7 @@ Just don't tick it in the prompt — it stays at its current version.
    ```
    This bumps versions, writes CHANGELOG entries, and deletes the changeset file.
 2. Commit + push.
-3. Trigger the workflow once — it goes straight to publish.
+3. Trigger the release workflow once — it goes straight to publish.
    ```sh
    gh workflow run release.yml --repo sandydasari/openacme
    ```
@@ -89,14 +85,14 @@ pnpm changeset pre exit         # leave pre-release mode
 pnpm version-packages           # next bump produces final 0.2.0
 ```
 
-### How the workflow decides what to do
+### How the workflows decide what to do
 
-The `changesets/action@v1` step in `release.yml` branches on whether `.changeset/` contains pending `*.md` files:
+Both workflows use `changesets/action@v1`, which branches on whether `.changeset/` contains pending `*.md` files:
 
-- **Pending changesets** → opens or updates a "Version Packages" PR. Does **not** publish.
-- **No pending changesets** → runs `pnpm release` (= `turbo run build && changeset publish`). Publishes any package whose `version` in `package.json` is greater than the version on the npm registry. Already-published versions are skipped.
+- **Pending changesets** → opens or updates the "Version Packages" PR. Does **not** publish. (`version.yml` only ever does this — it passes no `publish` command, so it can never release.)
+- **No pending changesets** → `release.yml` runs `pnpm release` (= `turbo run build && changeset publish`). Publishes any package whose `version` in `package.json` is greater than the version on the npm registry. Already-published versions are skipped.
 
-That's why Flow B works — you do the version bump locally, leaving no changesets, and the workflow's only remaining job is to publish.
+That's why Flow B works — you do the version bump locally, leaving no changesets, and the release workflow's only remaining job is to publish. (If you dispatch `release.yml` while changesets are still pending, it just refreshes the Version Packages PR and publishes nothing.)
 
 ### Provenance
 
