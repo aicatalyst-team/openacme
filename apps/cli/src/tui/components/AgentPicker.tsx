@@ -16,7 +16,10 @@ export function AgentPicker({
 }) {
   const items = agents.map((a) => ({
     key: a.id,
-    label: a.name,
+    // `icon:<name>` avatars are web-only — the terminal can't draw them.
+    label: a.avatar && !a.avatar.startsWith("icon:")
+      ? `${a.avatar} ${a.name}`
+      : a.name,
     // Role (paragraph-length, written for other agents/users) is the
     // useful "which one is this?" signal. Falls back to provider/model
     // when an agent's role hasn't been filled in yet.

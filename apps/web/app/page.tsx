@@ -30,6 +30,7 @@ import { Button } from "@/app/components/ui/button";
 import { Textarea } from "@/app/components/ui/textarea";
 import { SectionEyebrow } from "@/app/components/ui/section-eyebrow";
 import { AgentRef } from "@/app/components/ui/agent-ref";
+import { AgentAvatar } from "@/app/components/ui/agent-avatar";
 import { ScribedRule } from "@/app/components/ui/scribed-rule";
 import { JargonChip } from "@/app/components/ui/jargon-chip";
 import { ChatSetupPanel } from "./components/ChatSetupPanel";
@@ -52,6 +53,7 @@ import { cn } from "@/app/lib/utils";
 interface Agent {
   id: string;
   name: string;
+  avatar?: string;
   role: string;
   model: { provider: string; model: string };
   persona: string;
@@ -931,8 +933,15 @@ function ChatPageInner() {
                 (activeSessionId ? "Untitled session" : "New chat")}
             </span>
             {activeAgent && (
-              <span className="hidden font-mono text-[11px] text-ink-faint md:inline">
-                ·{" "}
+              <span className="hidden items-center gap-1.5 font-mono text-[11px] text-ink-faint md:inline-flex">
+                <span aria-hidden>·</span>
+                {activeAgent.avatar && (
+                  <AgentAvatar
+                    avatar={activeAgent.avatar}
+                    size="sm"
+                    className="text-ink-soft"
+                  />
+                )}
                 <AgentRef
                   id={activeAgent.id}
                   label={activeAgent.name}

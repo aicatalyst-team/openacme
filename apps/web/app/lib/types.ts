@@ -82,6 +82,7 @@ export interface SessionSummary {
   sessionId: string;
   agentId: string;
   agentName: string;
+  agentAvatar?: string;
   title: string | null;
   status: "waiting" | "running" | "idle";
   currentTaskTitle: string | null;

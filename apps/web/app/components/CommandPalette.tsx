@@ -9,6 +9,7 @@ import {
 } from "@/app/components/ui/dialog";
 import { API_BASE } from "@/app/lib/api";
 import { cn } from "@/app/lib/utils";
+import { AgentAvatar } from "@/app/components/ui/agent-avatar";
 import {
   Bot,
   Home,
@@ -23,6 +24,7 @@ interface AgentLite {
   id: string;
   name: string;
   role?: string;
+  avatar?: string;
 }
 
 interface PaletteItem {
@@ -31,6 +33,8 @@ interface PaletteItem {
   hint?: string;
   shortcut?: string;
   icon?: React.ComponentType<{ className?: string }>;
+  /** Per-agent avatar glyph; takes precedence over `icon` when set. */
+  avatar?: string;
   onSelect: () => void;
 }
 
@@ -115,6 +119,7 @@ export function CommandPalette() {
       label: a.name,
       hint: a.id,
       icon: Bot,
+      avatar: a.avatar,
       onSelect: () => {
         router.push(`/agents?id=${encodeURIComponent(a.id)}`);
         close();
@@ -126,6 +131,7 @@ export function CommandPalette() {
       label: `Chat with ${a.name}`,
       hint: a.id,
       icon: Bot,
+      avatar: a.avatar,
       onSelect: () => {
         router.push(`/?agent=${encodeURIComponent(a.id)}`);
         close();
@@ -352,7 +358,15 @@ export function CommandPalette() {
                         className="absolute inset-y-0 left-0 w-[2px] bg-plot-red"
                       />
                     )}
-                    {Icon && <Icon className="size-4 shrink-0 text-ink-soft" />}
+                    {item.avatar ? (
+                      <AgentAvatar
+                        avatar={item.avatar}
+                        size="lg"
+                        className="w-4 text-center"
+                      />
+                    ) : (
+                      Icon && <Icon className="size-4 shrink-0 text-ink-soft" />
+                    )}
                     <span className="flex-1 truncate">{item.label}</span>
                     {item.hint && (
                       <span className="font-mono text-[11px] tabular-nums text-ink-faint">

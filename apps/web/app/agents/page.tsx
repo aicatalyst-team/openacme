@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import {
-  Bot,
   Plus,
   Trash2,
   Save,
@@ -53,6 +52,25 @@ import {
 } from "@/app/components/ui/select";
 import { SectionEyebrow } from "@/app/components/ui/section-eyebrow";
 import { ActiveMarker } from "@/app/components/ui/active-marker";
+import { AgentAvatar } from "@/app/components/ui/agent-avatar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/app/components/ui/popover";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/app/components/ui/tabs";
+import dynamic from "next/dynamic";
+import type { EmojiClickData } from "emoji-picker-react";
+import {
+  DynamicIcon,
+  iconNames,
+  type IconName,
+} from "lucide-react/dynamic";
 import { cn } from "@/app/lib/utils";
 import { Markdown } from "@/app/components/Markdown";
 import { AgentResourcesPanel } from "@/app/components/AgentResourcesPanel";
@@ -62,6 +80,7 @@ type CacheTtl = "5m" | "1h";
 interface Agent {
   id: string;
   name: string;
+  avatar?: string;
   role: string;
   model: {
     provider: string;
@@ -96,6 +115,7 @@ interface CatalogTemplate {
   meta: CatalogTemplateMeta;
   agentFields: {
     name: string;
+    avatar?: string;
     role?: string;
     persona: string;
     tools: string[];
@@ -130,6 +150,7 @@ interface CatalogPreview {
 interface FormState {
   id: string;
   name: string;
+  avatar: string;
   role: string;
   provider: string;
   model: string;
@@ -147,6 +168,7 @@ const CUSTOM_MODEL = "__custom__";
 const FALLBACK_FORM: FormState = {
   id: "",
   name: "",
+  avatar: "",
   role: "",
   provider: "openrouter",
   model: "",
@@ -158,6 +180,126 @@ const FALLBACK_FORM: FormState = {
   mcpServers: {},
   mcpDisabled: [],
 };
+
+// Lazy: emoji data is sizeable and only needed once the picker opens.
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), {
+  ssr: false,
+  loading: () => (
+    <div className="p-6 text-center font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
+      Loading&hellip;
+    </div>
+  ),
+});
+
+// Default icon-tab view before the user searches the full set.
+const POPULAR_ICONS = [
+  "bot", "wrench", "hammer", "code", "terminal", "palette", "pen-line",
+  "chart-column", "search", "book-open", "scale", "flask-conical",
+  "briefcase", "megaphone", "shield", "globe", "brain", "cog", "rocket",
+  "lightbulb", "database", "mail", "calendar", "users",
+].filter((n): n is IconName => (iconNames as readonly string[]).includes(n));
+
+/** Avatar input with an emoji picker + searchable lucide icon picker.
+ *  Free-text stays available for anything the pickers don't cover. */
+function AvatarField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [iconQuery, setIconQuery] = useState("");
+  const pick = (v: string) => {
+    onChange(v);
+    setOpen(false);
+  };
+  const q = iconQuery.trim().toLowerCase();
+  const shownIcons = q
+    ? iconNames.filter((n) => n.includes(q)).slice(0, 64)
+    : POPULAR_ICONS;
+  return (
+    <div className="flex gap-2">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="Pick avatar"
+            className="flex size-9 shrink-0 items-center justify-center border border-paper-rule bg-paper transition-colors hover:border-plot-red"
+          >
+            <AgentAvatar
+              avatar={value.trim() || undefined}
+              size="lg"
+              className="text-ink-soft"
+            />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" sideOffset={6} className="w-[324px] p-0">
+          <Tabs defaultValue="emoji">
+            <TabsList className="h-9 w-full border-b border-paper-rule pl-2">
+              <TabsTrigger value="emoji">Emoji</TabsTrigger>
+              <TabsTrigger value="icons">Icons</TabsTrigger>
+            </TabsList>
+            <TabsContent value="emoji" className="mt-0">
+              <EmojiPicker
+                onEmojiClick={(d: EmojiClickData) => pick(d.emoji)}
+                width="100%"
+                height={340}
+                previewConfig={{ showPreview: false }}
+                skinTonesDisabled
+                lazyLoadEmojis
+              />
+            </TabsContent>
+            <TabsContent value="icons" className="mt-0 p-3">
+              <input
+                type="text"
+                value={iconQuery}
+                onChange={(e) => setIconQuery(e.target.value)}
+                placeholder="Search icons…"
+                className="mb-2 w-full border border-paper-rule bg-paper px-2 py-1 text-[12px] text-ink outline-none placeholder:text-ink-faint focus:border-plot-red"
+              />
+              <div className="grid max-h-56 grid-cols-8 gap-1 overflow-y-auto">
+                {shownIcons.length === 0 ? (
+                  <p className="col-span-8 py-4 text-center font-mono text-[11px] text-ink-faint">
+                    No icons match.
+                  </p>
+                ) : (
+                  shownIcons.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      title={name}
+                      aria-label={name}
+                      onClick={() => pick(`icon:${name}`)}
+                      className="flex size-8 items-center justify-center text-ink-soft transition-colors hover:bg-paper-sunk hover:text-ink"
+                    >
+                      <DynamicIcon name={name} className="size-4" aria-hidden />
+                    </button>
+                  ))
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+          <div className="border-t border-paper-rule p-2">
+            <button
+              type="button"
+              onClick={() => pick("")}
+              className="w-full border border-paper-rule px-2 py-1 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-soft transition-colors hover:border-plot-red hover:text-plot-red"
+            >
+              Default
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <Input
+        id="avatar"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="🤖"
+      />
+    </div>
+  );
+}
 
 export default function AgentsPage() {
   return (
@@ -344,6 +486,7 @@ function AgentsPageInner() {
 
   const buildAgentBody = () => ({
     name: formData.name,
+    avatar: formData.avatar.trim() || undefined,
     role: formData.role,
     model: {
       provider: formData.provider,
@@ -547,6 +690,7 @@ function AgentsPageInner() {
     setFormData({
       id: selectedAgent.id,
       name: selectedAgent.name,
+      avatar: selectedAgent.avatar ?? "",
       role: selectedAgent.role ?? "",
       provider: selectedAgent.model.provider,
       model: selectedAgent.model.model,
@@ -637,6 +781,7 @@ function AgentsPageInner() {
           setFormData({
             id: prev.assignedId,
             name: tpl.agentFields.name,
+            avatar: tpl.agentFields.avatar ?? "",
             role: tpl.agentFields.role ?? "",
             provider,
             model,
@@ -701,6 +846,7 @@ function AgentsPageInner() {
         setFormData({
           id: found.id,
           name: found.name,
+          avatar: found.avatar ?? "",
           role: found.role ?? "",
           provider: found.model.provider,
           model: found.model.model,
@@ -802,7 +948,11 @@ function AgentsPageInner() {
                   )}
                 >
                   <ActiveMarker active={isActive} />
-                  <Bot className="size-4 shrink-0 mt-0.5 text-ink-soft" />
+                  <AgentAvatar
+                    avatar={agent.avatar}
+                    size="lg"
+                    className="mt-0.5 text-ink-soft"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-ink">
                       {agent.name}
@@ -887,17 +1037,28 @@ function AgentsPageInner() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-5">
-                    <div className="grid gap-2">
-                      <Label htmlFor="name">Name</Label>
-                      <Input
-                        id="name"
-                        value={formData.name}
-                        onChange={(e) =>
-                          setFormData({ ...formData, name: e.target.value })
-                        }
-                        placeholder="My Agent"
-                        required
-                      />
+                    <div className="grid grid-cols-[1fr_11rem] gap-5">
+                      <div className="grid gap-2">
+                        <Label htmlFor="name">Name</Label>
+                        <Input
+                          id="name"
+                          value={formData.name}
+                          onChange={(e) =>
+                            setFormData({ ...formData, name: e.target.value })
+                          }
+                          placeholder="My Agent"
+                          required
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="avatar">Avatar</Label>
+                        <AvatarField
+                          value={formData.avatar}
+                          onChange={(v) =>
+                            setFormData({ ...formData, avatar: v })
+                          }
+                        />
+                      </div>
                     </div>
 
                     {isCreating && (
@@ -1877,7 +2038,16 @@ function AgentDetail({
       <div className="flex flex-row items-start justify-between gap-4 border-b border-paper-rule pb-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className="text-xl">{agent.name}</CardTitle>
+              <CardTitle className="text-xl">
+                {agent.avatar && (
+                  <AgentAvatar
+                    avatar={agent.avatar}
+                    size="xl"
+                    className="mr-2 align-[-2px]"
+                  />
+                )}
+                {agent.name}
+              </CardTitle>
               {agent.managed && (
                 <Badge variant="outline" className="font-mono text-[11px]">
                   Managed by OpenAcme
