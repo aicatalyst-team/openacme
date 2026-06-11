@@ -5,11 +5,11 @@ paths:
 
 # web
 
-Next.js 16 App Router. Pages: `/` (chat), `/agents`, `/settings`, `/skills`. Tailwind + Radix primitives + react-markdown. Static-built into `packages/server/web/` and served by Hono.
+Vite + TanStack Router SPA. Routes in `app/routes/`: `/` (chat), `/agents`, `/teams`, `/tasks`, `/skills`, `/settings`, `/login`. Tailwind v4 + Radix primitives + react-markdown. Static-built into `packages/server/web/` and served by Hono; embedded Vite middleware in dev.
 
 ## Chat is SSE-only. The page owns `messages` state directly.
 
-`apps/web/app/page.tsx` does NOT use `useChat`. Agent runs are server-owned; every observer (the originating tab included) reads them over the per-session SSE channel via `useLiveSession`. `messages` is plain `useState<OpenAcmeUIMessage[]>` — that's the canonical render source.
+`apps/web/app/routes/index.tsx` does NOT use `useChat`. Agent runs are server-owned; every observer (the originating tab included) reads them over the per-session SSE channel via `useLiveSession`. `messages` is plain `useState<OpenAcmeUIMessage[]>` — that's the canonical render source.
 
 The send flow:
 
@@ -43,15 +43,17 @@ Transient parts (e.g. `data-status`) are stripped by `readUIMessageStream` so th
 - Provider-gate the picker via `activeModalities` from `/api/models` (each preset carries `inputModalities` from the bundled registry). Disable picker + drag-drop overlay when the active model is text-only.
 - Per-file blob preview URL — `URL.revokeObjectURL` after send to avoid leaking object URLs.
 
-## One URL: `:3210` in dev and published. Hono fronts the UI; in dev it proxies to Next.
+## One URL, one process: `:3210` in dev and published. Hono fronts the UI.
 
-`pnpm dev` runs Hono on the configured `server.port` (default `:3210`) and Next dev on `server.port + 10` (default `:3220`, loopback only). Hono routes `/api/*` in-process and proxies everything else — including `_next/*` HMR WebSocket upgrades — to Next. Open the API port. The proxy seam lives in `packages/server/src/dev-proxy.ts`; both dev scripts (`packages/server/scripts/dev.mjs`, `apps/web/scripts/dev.mjs`) share `scripts/lib/dev-ports.mjs`, which reads `server.port` from `<dataDir>/config.yaml` and derives the web port. Two parallel `pnpm dev` sessions against different data dirs work automatically as long as their API ports differ — single config knob (`server.port`), no env vars.
+`pnpm dev` runs one server process per data dir on the configured `server.port` (default `:3210`). In dev, `packages/server/scripts/dev.mjs` sets `OPENACME_WEB_DEV=<apps/web path>` and the server embeds Vite in middleware mode (`packages/server/src/dev-web.ts`): `/api/*` → Hono, everything else → Vite (`appType: "spa"` serves index.html with history fallback), and the HMR WebSocket attaches to the same server via `hmr: { server }`. No separate web dev process, no derived web port. Two parallel `pnpm dev` sessions against different data dirs work automatically as long as their `server.port`s differ — single config knob, no port math.
 
-- Don't reintroduce `next.config.js` rewrites for `/api/*`. Same-origin already works — the browser only sees `:3210`.
-- Don't open `:3220` in docs / browser-launch / status output. It's an internal port; `:3210` is the canonical URL.
-- The Next dev port is loopback-bound but technically reachable on the box. Treat it like the rest of the local-only attack surface (no auth between web ↔ server today).
-- Published installs: Hono on `:3210` serves the static export at `packages/server/web/` (filled by `prepack`). No proxy, no Next process. Same URL.
-- Daemons running outside the dev proxy (e.g. `pnpm agent start --data-dir ~/.openacme-test`) skip Next entirely. They serve the bundled static if present, else fall back to the workspace `apps/web/out` (after a local `pnpm build`). API-only if neither exists. Two daemons can run at once because the test slot doesn't need `:3220`.
+- The web app is a Vite + TanStack Router SPA. Routes live in `apps/web/app/routes/`; search params are Zod-validated via `validateSearch` — use `z.coerce.string()` for string params (TanStack's search parser turns `?id=3` into the number 3; bare `z.string()` rejects it and the route errors).
+- `vite` is a devDependency of `packages/server` behind a dynamic `import()` — published dists never load it. Keep the version range in sync with apps/web so pnpm dedupes to one instance.
+- The server's `tsx watch` ignores the web root (`--ignore <webRoot>/**`): Vite bundles `vite.config.ts` into `apps/web/node_modules/.vite-temp/` and imports it, and watching those temp files causes an endless restart loop. Vite owns reloading for everything under the web root.
+- Server-code edits restart the process, which restarts the embedded Vite — the browser tab full-reloads on HMR reconnect. Web-only edits hot-reload in place.
+- Published installs: Hono on `:3210` serves the static build at `packages/server/web/` (filled by `prepack` from `apps/web/out/`). Single index.html; every non-asset path falls back to it and the router resolves client-side.
+- Daemons running without `OPENACME_WEB_DEV` (e.g. `pnpm agent start --data-dir ~/.openacme-test`) serve the bundled static if present, else fall back to the workspace `apps/web/out` (after a local `pnpm build`). API-only if neither exists.
+- Auth whitelist: Vite emits all hashed JS/CSS/font assets under `/assets/` — that prefix (plus favicon + PWA files) bypasses the secret-cookie middleware so the login page can render pre-auth on non-loopback installs.
 
 ## No auth between web and server. Treat as 127.0.0.1 only.
 
@@ -64,12 +66,12 @@ There is **no** session, no token, no CSRF, no CORS gate (CORS is wide open). Th
 ## Component layering
 
 - `app/components/ui/` — shadcn-style primitives (button, card, input, select). Reuse before extending.
-- `app/components/` — app-specific composites (Sidebar, Markdown, AttachmentChip, MessageBubble lives inline in `page.tsx`).
+- `app/components/` — app-specific composites (Sidebar, Markdown, AttachmentChip, MessageBubble lives inline in `routes/index.tsx`).
 - New banner / header / card: copy a sibling's font/gradient/border conventions before inventing. There's a feedback memory on this — drift looks bad and adds CSS debt.
 
 ## Rendering UIMessage parts
 
-`MessageBubble` (in `page.tsx`) renders parts in order:
+`MessageBubble` (in `routes/index.tsx`) renders parts in order:
 
 - `type === "text"` → `<Markdown>{text}</Markdown>`. The streaming cursor (animated bar) goes after the LAST text part.
 - `type === "file"` → `<img>` for `mediaType.startsWith("image/")`, `AttachmentChip` (link) otherwise.
