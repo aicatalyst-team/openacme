@@ -31,6 +31,13 @@ import {
 } from "@/app/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/app/components/ui/tabs";
 import { cn } from "@/app/lib/utils";
+import { Markdown } from "../components/Markdown";
+import { FileWorkbench } from "../files/FileWorkbench";
+import {
+  FilePreviewDialog,
+  type FilePreviewTarget,
+} from "../files/FilePreviewDialog";
+import { useFileLinkResolver } from "../files/useFileLinkResolver";
 import { BrowseTab } from "../skills/browse-tab";
 import { SourcesTab } from "../skills/sources-tab";
 
@@ -375,7 +382,7 @@ function SkillsPage() {
               </button>
             )}
             {isCreating ? (
-              <Card className="mx-auto max-w-3xl">
+              <Card className="mx-auto max-w-5xl">
                 <CardHeader>
                   <CardTitle>Create skill</CardTitle>
                   <CardDescription>
@@ -442,13 +449,22 @@ function SkillsPage() {
             ) : selectedSkill ? (
               // Ruled sections on the pane, not a floating card — same
               // measure + treatment as the agents + tasks detail panes.
-              <div className="mx-auto max-w-3xl">
-                  <div className="flex flex-row items-start justify-between gap-4 border-b border-paper-rule pb-4">
+              <div className="mx-auto max-w-5xl">
+                  <div className="flex flex-row items-start justify-between gap-4 pb-2">
                     <div>
                       <CardTitle className="text-xl">{selectedSkill.name}</CardTitle>
                       <CardDescription className="mt-1.5">
                         {selectedSkill.description}
                       </CardDescription>
+                      {selectedSkill.tags.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {selectedSkill.tags.map((tag) => (
+                            <Badge key={tag} variant="outline">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <Button
                       variant="ghost-destructive"
@@ -459,66 +475,12 @@ function SkillsPage() {
                       Delete
                     </Button>
                   </div>
-                  <div className="divide-y divide-paper-rule [&>*]:py-4">
-                    {selectedSkill.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {selectedSkill.tags.map((tag) => (
-                          <Badge key={tag} variant="outline">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-
-                    {selectedSkill.relatedSkills.length > 0 && (
-                      <div>
-                        <Label className="mb-2 block">Related</Label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedSkill.relatedSkills.map((name) => (
-                            <Button
-                              key={name}
-                              variant="ghost"
-                              size="xs"
-                              onClick={() => void navigate({ to: "/skills", search: { name } })}
-                            >
-                              {name}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedSkill.resources && selectedSkill.resources.length > 0 && (
-                      <div>
-                        <Label className="mb-2 block">
-                          Resources ({selectedSkill.resources.length})
-                        </Label>
-                        <ul className="border-y border-paper-rule font-mono text-[12px]">
-                          {selectedSkill.resources.map((r) => (
-                            <li
-                              key={r.relPath}
-                              className="flex justify-between gap-4 border-b border-paper-rule/40 last:border-b-0 px-3 py-1 text-ink-soft tabular-nums"
-                            >
-                              <span className="truncate">{r.relPath}</span>
-                              <span className="shrink-0 text-ink-faint">{r.size}B</span>
-                            </li>
-                          ))}
-                        </ul>
-                        {selectedSkill.dirPath && (
-                          <p className="mt-2 font-mono text-[11px] text-ink-faint">
-                            {selectedSkill.dirPath}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    <div>
-                      <Label className="mb-2 block">Instructions</Label>
-                      <pre className="border border-paper-rule bg-paper-sunk p-4 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-words text-ink">
-                        {selectedSkill.body || "(No instructions)"}
-                      </pre>
-                    </div>
-                  </div>
+                  <SkillDetailTabs
+                    skill={selectedSkill}
+                    onPickRelated={(name) =>
+                      void navigate({ to: "/skills", search: { name } })
+                    }
+                  />
               </div>
             ) : skills.length === 0 ? (
               <EmptySkillsState onCreate={() => void navigate({ to: "/skills", search: { create: "1" } })} />
@@ -566,6 +528,80 @@ function SkillsPage() {
   );
 }
 
+function SkillDetailTabs({
+  skill,
+  onPickRelated,
+}: {
+  skill: Skill;
+  onPickRelated: (name: string) => void;
+}) {
+  // SKILL.md bodies reference sibling files ("see references/api.md") —
+  // linkify spans that resolve inside the skill's folder.
+  const linkOwner = useMemo(
+    () => ({ kind: "skill", id: skill.name }) as const,
+    [skill.name]
+  );
+  const linkSources = useMemo(
+    () => [{ id: skill.name, text: skill.body }],
+    [skill.name, skill.body]
+  );
+  const fileLinks = useFileLinkResolver(linkOwner, linkSources);
+  const [previewTarget, setPreviewTarget] =
+    useState<FilePreviewTarget | null>(null);
+
+  return (
+    <>
+      <Tabs defaultValue="skill" className="mt-1">
+        <TabsList>
+          <TabsTrigger value="skill">Skill</TabsTrigger>
+          <TabsTrigger value="files">Files</TabsTrigger>
+        </TabsList>
+        <TabsContent value="skill">
+          <div className="space-y-4">
+            <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
+              <Markdown fileLinks={fileLinks} onOpenFile={setPreviewTarget}>
+                {skill.body || "(No instructions)"}
+              </Markdown>
+            </div>
+
+            {skill.relatedSkills.length > 0 && (
+              <div>
+                <Label className="mb-2 block">Related</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {skill.relatedSkills.map((name) => (
+                    <Button
+                      key={name}
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => onPickRelated(name)}
+                    >
+                      {name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+        <TabsContent value="files">
+          <FileWorkbench
+            root={{ kind: "skill", id: skill.name, scope: "files" }}
+          />
+          {skill.dirPath && (
+            <p className="mt-2 font-mono text-[11px] text-ink-faint">
+              {skill.dirPath}
+            </p>
+          )}
+        </TabsContent>
+      </Tabs>
+      <FilePreviewDialog
+        target={previewTarget}
+        onClose={() => setPreviewTarget(null)}
+      />
+    </>
+  );
+}
+
 function EmptySkillsState({ onCreate }: { onCreate: () => void }) {
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
@@ -573,7 +609,7 @@ function EmptySkillsState({ onCreate }: { onCreate: () => void }) {
     return () => clearTimeout(t);
   }, []);
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-5xl">
       <SectionEyebrow meta="0 skills">No skills installed</SectionEyebrow>
 
       <div className="mt-6 border border-paper-rule paper-surface">
@@ -640,7 +676,7 @@ function NoSkillPicked() {
   // mini-reference doubles as documentation: a reader who lands here
   // without selecting anything learns the SKILL.md contract.
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-5xl">
       <SectionEyebrow>Select a skill</SectionEyebrow>
       <p className="mt-3 max-w-prose text-[13px] leading-relaxed text-ink-soft">
         Pick a row from the index to view its body and edit frontmatter.

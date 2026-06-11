@@ -66,7 +66,12 @@ import type { EmojiClickData } from "emoji-picker-react";
 import { DynamicIcon, iconNames, type IconName } from "lucide-react/dynamic";
 import { cn } from "@/app/lib/utils";
 import { Markdown } from "@/app/components/Markdown";
-import { AgentResourcesPanel } from "@/app/components/AgentResourcesPanel";
+import { FileWorkbench } from "@/app/files/FileWorkbench";
+import {
+  FilePreviewDialog,
+  type FilePreviewTarget,
+} from "@/app/files/FilePreviewDialog";
+import { useFileLinkResolver } from "@/app/files/useFileLinkResolver";
 
 type CacheTtl = "5m" | "1h";
 
@@ -303,11 +308,15 @@ function AvatarField({
   );
 }
 
+const AGENT_TABS = ["overview", "workspace", "resources"] as const;
+type AgentTab = (typeof AGENT_TABS)[number];
+
 export const Route = createFileRoute("/agents")({
   validateSearch: z.object({
     id: z.coerce.string().optional(),
     create: z.coerce.string().optional(),
     import: z.coerce.string().optional(),
+    tab: z.enum(AGENT_TABS).optional().catch(undefined),
   }),
   component: AgentsPage,
 });
@@ -318,6 +327,7 @@ function AgentsPage() {
   const urlId = search.id ?? null;
   const urlCreate = search.create === "1";
   const urlImportTemplate = search["import"] ?? null;
+  const detailTab: AgentTab = search.tab ?? "overview";
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tools, setTools] = useState<ToolInfo[]>([]);
@@ -1019,13 +1029,24 @@ function AgentsPage() {
                 agent={selectedAgent}
                 globalServers={globalMcp}
                 allSkills={allSkills}
+                tab={detailTab}
+                onTabChange={(next) =>
+                  void navigate({
+                    to: "/agents",
+                    search: {
+                      id: selectedAgent.id,
+                      tab: next === "overview" ? undefined : next,
+                    },
+                    replace: true,
+                  })
+                }
                 onEdit={() => setIsEditing(true)}
                 onDelete={() => setConfirmDelete(selectedAgent.id)}
               />
             ) : showForm ? (
               <form
                 onSubmit={isCreating ? handleCreate : handleUpdate}
-                className="mx-auto max-w-3xl space-y-4"
+                className="mx-auto max-w-6xl space-y-4"
               >
                 {urlImportTemplate && importTemplate && importPreview && (
                   <ImportPreviewBlock
@@ -1314,9 +1335,6 @@ function AgentsPage() {
                     />
                   )}
 
-                  {selectedAgent && (
-                    <AgentResourcesPanel agentId={selectedAgent.id} />
-                  )}
                 </div>
 
                 <div className="mt-4 flex items-center justify-between">
@@ -1895,7 +1913,7 @@ function ImportPreviewBlock({
 function EmptyWorkforceState({ onCreate }: { onCreate: () => void }) {
   const rowDelay = (i: number) => 80 + i * 120;
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-6xl">
       <SectionEyebrow meta="0 agents">The workforce is empty</SectionEyebrow>
 
       <div className="mt-6 border border-dashed border-paper-rule paper-surface opacity-80">
@@ -2009,7 +2027,7 @@ function EmptyWorkforceState({ onCreate }: { onCreate: () => void }) {
 
 function NoAgentPicked() {
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-6xl">
       <SectionEyebrow>Select an agent</SectionEyebrow>
       <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">
         Pick a row from the roster to view its model, persona, tools, and
@@ -2024,32 +2042,24 @@ function AgentDetail({
   agent,
   globalServers,
   allSkills,
+  tab,
+  onTabChange,
   onEdit,
   onDelete,
 }: {
   agent: Agent;
   globalServers: Record<string, MCPServerConfigDto>;
   allSkills: SkillIndexEntry[];
+  tab: AgentTab;
+  onTabChange: (tab: AgentTab) => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const disabledSet = new Set(agent.mcpDisabled ?? []);
-  const privateServers = Object.entries(agent.mcpServers ?? {});
-  const inheritedServers = Object.entries(globalServers).filter(
-    ([name]) => !disabledSet.has(name),
-  );
-  const skillEntries = (agent.skills ?? [])
-    .map(
-      (name) =>
-        allSkills.find((s) => s.name === name) ?? { name, description: "" },
-    )
-    .filter(Boolean);
-
   // Detail is ruled sections on the pane, not a floating card — one shared
   // measure with the skills + tasks detail panes.
   return (
-    <div className="mx-auto max-w-3xl">
-      <div className="flex flex-row items-start justify-between gap-4 border-b border-paper-rule pb-4">
+    <div className="mx-auto max-w-6xl">
+      <div className="flex flex-row items-start justify-between gap-4 pb-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <CardTitle className="text-xl">
@@ -2091,6 +2101,75 @@ function AgentDetail({
           </div>
         )}
       </div>
+      <Tabs
+        value={tab}
+        onValueChange={(v) => onTabChange(v as AgentTab)}
+        className="mt-1"
+      >
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="workspace">Workspace</TabsTrigger>
+          <TabsTrigger value="resources">Resources</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview">
+          <AgentOverviewTab
+            agent={agent}
+            globalServers={globalServers}
+            allSkills={allSkills}
+          />
+        </TabsContent>
+        <TabsContent value="workspace">
+          <FileWorkbench
+            root={{ kind: "agent", id: agent.id, scope: "workspace" }}
+          />
+        </TabsContent>
+        <TabsContent value="resources">
+          <FileWorkbench
+            root={{ kind: "agent", id: agent.id, scope: "resources" }}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function AgentOverviewTab({
+  agent,
+  globalServers,
+  allSkills,
+}: {
+  agent: Agent;
+  globalServers: Record<string, MCPServerConfigDto>;
+  allSkills: SkillIndexEntry[];
+}) {
+  const disabledSet = new Set(agent.mcpDisabled ?? []);
+  const privateServers = Object.entries(agent.mcpServers ?? {});
+  const inheritedServers = Object.entries(globalServers).filter(
+    ([name]) => !disabledSet.has(name),
+  );
+  const skillEntries = (agent.skills ?? [])
+    .map(
+      (name) =>
+        allSkills.find((s) => s.name === name) ?? { name, description: "" },
+    )
+    .filter(Boolean);
+
+  // Persona prose references files ("use template.json") — linkify the
+  // spans that resolve under the agent's roots, same as chat.
+  const linkOwner = useMemo(
+    () => ({ kind: "agent", id: agent.id }) as const,
+    [agent.id],
+  );
+  const linkSources = useMemo(
+    () => [{ id: agent.id, text: agent.persona }],
+    [agent.id, agent.persona],
+  );
+  const fileLinks = useFileLinkResolver(linkOwner, linkSources);
+  const [previewTarget, setPreviewTarget] =
+    useState<FilePreviewTarget | null>(null);
+
+  return (
+    <>
       <div className="divide-y divide-paper-rule [&>*]:py-5">
         {agent.role && (
           <div>
@@ -2109,7 +2188,9 @@ function AgentDetail({
         <div>
           <Label className="mb-1.5 block">Persona</Label>
           <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
-            <Markdown>{agent.persona}</Markdown>
+            <Markdown fileLinks={fileLinks} onOpenFile={setPreviewTarget}>
+              {agent.persona}
+            </Markdown>
           </div>
         </div>
 
@@ -2209,9 +2290,12 @@ function AgentDetail({
           )}
         </div>
 
-        <AgentResourcesPanel agentId={agent.id} readOnly={agent.managed} />
       </div>
-    </div>
+      <FilePreviewDialog
+        target={previewTarget}
+        onClose={() => setPreviewTarget(null)}
+      />
+    </>
   );
 }
 

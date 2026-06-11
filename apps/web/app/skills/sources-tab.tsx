@@ -248,7 +248,7 @@ export function SourcesTab() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 px-3 py-4 md:px-6">
+    <div className="mx-auto max-w-5xl space-y-4 px-3 py-4 md:px-6">
       <div className="flex items-center justify-between">
         <p className="text-[13px] text-ink-soft">
           Taps are catalogs the hub searches when you browse skills — GitHub
