@@ -1,6 +1,6 @@
-"use client";
-
 import { useEffect, useState, type FormEvent } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
 import { toast } from "sonner";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -17,7 +17,12 @@ import { API_BASE } from "../lib/api";
 
 const HEADLINE = "OPENACME · DAEMON READY";
 
-export default function LoginPage() {
+export const Route = createFileRoute("/login")({
+  validateSearch: z.object({ next: z.coerce.string().optional() }),
+  component: LoginPage,
+});
+
+function LoginPage() {
   const [secret, setSecret] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [next, setNext] = useState("/");

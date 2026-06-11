@@ -1,7 +1,4 @@
-"use client";
-
 import {
-  Suspense,
   memo,
   useState,
   useRef,
@@ -14,18 +11,17 @@ import { ArrowDown, ArrowUp, Square, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import type { UIMessage } from "ai";
-import type { MessageMetadata, OpenAcmeUIMessage } from "./lib/types";
-import { Sidebar } from "./components/Sidebar";
-import { HomeView } from "./components/HomeView";
-import { useLiveSession } from "./lib/useLiveSession";
-import { navigateClient } from "./lib/navigate";
-import { Markdown } from "./components/Markdown";
-import { AttachmentChip } from "./components/AttachmentChip";
-import { MediaPreview } from "./components/MediaPreview";
-import { ToolBlock } from "./components/ToolBlock";
-import { API_BASE } from "./lib/api";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import type { MessageMetadata, OpenAcmeUIMessage } from "../lib/types";
+import { Sidebar } from "../components/Sidebar";
+import { HomeView } from "../components/HomeView";
+import { useLiveSession } from "../lib/useLiveSession";
+import { Markdown } from "../components/Markdown";
+import { AttachmentChip } from "../components/AttachmentChip";
+import { MediaPreview } from "../components/MediaPreview";
+import { ToolBlock } from "../components/ToolBlock";
+import { API_BASE } from "../lib/api";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { Button } from "@/app/components/ui/button";
 import { Textarea } from "@/app/components/ui/textarea";
 import { SectionEyebrow } from "@/app/components/ui/section-eyebrow";
@@ -33,7 +29,7 @@ import { AgentRef } from "@/app/components/ui/agent-ref";
 import { AgentAvatar } from "@/app/components/ui/agent-avatar";
 import { ScribedRule } from "@/app/components/ui/scribed-rule";
 import { JargonChip } from "@/app/components/ui/jargon-chip";
-import { ChatSetupPanel } from "./components/ChatSetupPanel";
+import { ChatSetupPanel } from "../components/ChatSetupPanel";
 import {
   Select,
   SelectContent,
@@ -43,11 +39,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/app/components/ui/select";
-import type { ProviderInfo } from "./lib/types";
+import type { ProviderInfo } from "../lib/types";
 import {
   ALLOWED_UPLOAD_MIMES,
   UPLOAD_LIMITS,
-} from "./lib/types";
+} from "../lib/types";
 import { cn } from "@/app/lib/utils";
 
 interface Agent {
@@ -99,19 +95,21 @@ function statusLabel(submitting: boolean, running: boolean, hasAgent: boolean): 
   return hasAgent ? "Ready" : "No agent";
 }
 
-export default function ChatPage() {
-  return (
-    <Suspense fallback={null}>
-      <ChatPageInner />
-    </Suspense>
-  );
-}
+export const Route = createFileRoute("/")({
+  validateSearch: z.object({
+    session: z.coerce.string().optional(),
+    agent: z.coerce.string().optional(),
+    // HomeView's per-agent bucket filter; orthogonal to session/agent.
+    agentFilter: z.coerce.string().optional(),
+  }),
+  component: ChatPage,
+});
 
-function ChatPageInner() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const sessionFromUrl = searchParams.get("session") ?? "";
-  const agentFromUrl = searchParams.get("agent") ?? "";
+function ChatPage() {
+  const navigate = useNavigate();
+  const search = Route.useSearch();
+  const sessionFromUrl = search.session ?? "";
+  const agentFromUrl = search.agent ?? "";
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [activeAgentId, setActiveAgentId] = useState<string>(agentFromUrl);
@@ -165,7 +163,7 @@ function ChatPageInner() {
   //  - `/` is the home view (no session, no agent context yet).
   //
   // Implementation: one effect, URL → state. State changes also push
-  // the URL via `router.replace` but ALWAYS strip `?agent` when a
+  // the URL via `navigate` but ALWAYS strip `?agent` when a
   // session is set. No circular ping-pong: when state matches URL,
   // both sides quiesce.
   useEffect(() => {
@@ -192,7 +190,7 @@ function ChatPageInner() {
   // Push state → URL ONLY when a local action mints a new session.
   // `send()` does this when the user hits enter with no active session
   // (`setActiveSessionId(crypto.randomUUID())`). All other URL changes
-  // flow through `router.push`/`router.replace` at the call site
+  // flow through `navigate` at the call site
   // (sidebar/HomeView/agents-page); the state then catches up via the
   // URL→state effect above.
   //
@@ -202,12 +200,8 @@ function ChatPageInner() {
   // and rewrite the URL back. The fix: only push when the local state
   // diverges from the URL AND it's a new session id we just minted.
   useEffect(() => {
-    const currentSession = searchParams.get("session") ?? "";
-    if (activeSessionId && activeSessionId !== currentSession) {
-      // `router.replace` no-ops on same-route URL changes in
-      // `output: "export"` mode; `navigateClient` does the
-      // pushState + manual popstate dispatch so hooks re-render.
-      navigateClient(`/?session=${encodeURIComponent(activeSessionId)}`);
+    if (activeSessionId && activeSessionId !== sessionFromUrl) {
+      void navigate({ to: "/", search: { session: activeSessionId } });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
@@ -895,7 +889,7 @@ function ChatPageInner() {
           <div className="flex min-w-0 items-center gap-2 md:gap-4">
             <button
               type="button"
-              onClick={() => navigateClient("/")}
+              onClick={() => void navigate({ to: "/" })}
               title="Back to home"
               aria-label="Back to home"
               className="flex size-11 items-center justify-center text-ink-soft hover:text-ink focus:outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-plot-red md:hidden"
@@ -1408,7 +1402,6 @@ const MessageBubble = memo(function MessageBubble({
                   rel="noreferrer"
                   className="block overflow-hidden border border-paper-rule bg-paper-sunk transition-colors hover:border-plot-red"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`${API_BASE}${part.url}`}
                     alt={part.filename ?? "attachment"}
@@ -1501,7 +1494,7 @@ const MessageBubble = memo(function MessageBubble({
               output?: unknown;
               errorText?: string;
             };
-            return <ToolBlock key={i} part={tp} isStreaming={isStreaming} />;
+            return <ToolBlock key={i} part={tp} />;
           }
           if ((part as { type?: unknown }).type === "text") {
             const text = (part as { text: string }).text;
@@ -1661,7 +1654,7 @@ function ChatNoAgentsState() {
       </p>
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <Button asChild>
-          <Link href="/agents">Create your first agent</Link>
+          <Link to="/agents">Create your first agent</Link>
         </Button>
         <span className="text-[12px] text-ink-faint">
           or run{" "}

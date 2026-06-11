@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect } from "react";
 
 const AUTH_STORAGE_KEY = "openacme-auth";

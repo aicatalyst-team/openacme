@@ -1,6 +1,4 @@
-"use client"
-
-import Link from "next/link"
+import { Link } from "@tanstack/react-router"
 
 import { cn } from "@/app/lib/utils"
 
@@ -21,7 +19,8 @@ export function AgentRef({
 }) {
   return (
     <Link
-      href={`/agents?id=${encodeURIComponent(id)}`}
+      to="/agents"
+      search={{ id }}
       onClick={(e) => e.stopPropagation()}
       className={cn(
         "underline-offset-2 transition-colors hover:text-plot-red hover:underline focus-visible:text-plot-red focus-visible:underline focus-visible:outline-none",

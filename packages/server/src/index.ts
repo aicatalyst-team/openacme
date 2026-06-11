@@ -10,7 +10,6 @@ import {
 } from "@openacme/config";
 import { createLogger } from "@openacme/config/logger";
 import { createApp } from "./app.js";
-import { createDevHttpServer } from "./dev-proxy.js";
 
 const log = createLogger("server.index");
 
@@ -81,20 +80,22 @@ export async function startServer(dataDirOverride?: string) {
 
   const port = config.server.port;
   const host = config.server.host;
-  const proxyTargetEnv = process.env["OPENACME_DEV_PROXY_TARGET"];
+  const webDevRoot = process.env["OPENACME_WEB_DEV"];
 
   console.log(`\n🚀 OpenAcme Agent Server`);
   console.log(`   http://${host}:${port}`);
   console.log(`   Agents: ${manager.listAgents().length}`);
   console.log(`   Health: http://${host}:${port}/api/health`);
-  if (proxyTargetEnv) console.log(`   Dev: non-API → ${proxyTargetEnv}`);
+  if (webDevRoot) console.log(`   Dev: embedded Vite (${webDevRoot})`);
   console.log("");
 
   let server: ReturnType<typeof serve>;
-  if (proxyTargetEnv) {
-    const httpServer = createDevHttpServer({
+  if (webDevRoot) {
+    // Dynamic import so published dists never parse the dev module.
+    const { createDevWebServer } = await import("./dev-web.js");
+    const httpServer = await createDevWebServer({
       honoListener: getRequestListener(app.fetch),
-      proxyTarget: new URL(proxyTargetEnv),
+      webRoot: webDevRoot,
     });
     httpServer.listen(port, host);
     server = httpServer as unknown as ReturnType<typeof serve>;

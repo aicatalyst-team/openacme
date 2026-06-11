@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { Plug, Trash2 } from "lucide-react";
 import { LoadingHairline } from "@/app/components/ui/loading-hairline";

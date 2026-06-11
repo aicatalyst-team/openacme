@@ -2,6 +2,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@font-face {
+  font-family: "Geist";
+  src: url("./fonts/GeistVF.woff") format("woff");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./fonts/GeistMonoVF.woff") format("woff");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --font-sans: "Geist";
+  --font-mono: "Geist Mono";
+}
+
 /*
  * The Operator's Console — see DESIGN.md.
  * Surfaces: warm paper / cool graphite. Single accent: plot-red, ≤10% rule.

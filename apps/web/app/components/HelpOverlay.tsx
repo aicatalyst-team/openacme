@@ -1,7 +1,5 @@
-"use client";
-
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useLocation } from "@tanstack/react-router";
 
 import {
   Dialog,
@@ -68,7 +66,7 @@ const CONCEPTS: ConceptRow[] = [
 
 export function HelpOverlay() {
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (l) => l.pathname });
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

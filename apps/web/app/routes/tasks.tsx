@@ -1,7 +1,6 @@
-"use client";
-
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { Kanban, Rows3 } from "lucide-react";
 import { toast } from "sonner";
 import { Sidebar } from "../components/Sidebar";
@@ -24,8 +23,8 @@ import {
 } from "@/app/components/ui/dialog";
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import { cn } from "@/app/lib/utils";
-import { TasksBoard } from "./board";
-import { TaskDetailPanel, type AgentOption } from "./detail";
+import { TasksBoard } from "../tasks/board";
+import { TaskDetailPanel, type AgentOption } from "../tasks/detail";
 import {
   STATUS_LABEL,
   STATUS_ORDER,
@@ -35,23 +34,19 @@ import {
   formatRelativeFutureFromIso,
   type Task,
   type TaskStatus,
-} from "./types";
+} from "../tasks/types";
 
 type ViewMode = "board" | "list";
 const VIEW_MODE_STORAGE_KEY = "openacme.tasks.viewMode";
 
-export default function TasksPage() {
-  return (
-    <Suspense fallback={null}>
-      <TasksPageInner />
-    </Suspense>
-  );
-}
+export const Route = createFileRoute("/tasks")({
+  validateSearch: z.object({ id: z.coerce.string().optional() }),
+  component: TasksPage,
+});
 
-function TasksPageInner() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const urlId = searchParams.get("id");
+function TasksPage() {
+  const navigate = useNavigate();
+  const urlId = Route.useSearch().id ?? null;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,7 +223,7 @@ function TasksPageInner() {
       await load();
       toast.success("Deleted");
       setConfirmDelete(null);
-      if (wasSelected) router.push("/tasks");
+      if (wasSelected) void navigate({ to: "/tasks" });
       return true;
     } catch (e) {
       toast.error((e as Error).message);
@@ -314,7 +309,7 @@ function TasksPageInner() {
           <TasksBoard
             tasks={tasks}
             selectedId={selected?.id ?? null}
-            onPick={(id) => router.push(`/tasks?id=${id}`)}
+            onPick={(id) => void navigate({ to: "/tasks", search: { id } })}
             onMove={(id, target) => void moveStatus(id, target)}
           />
         ) : (
@@ -342,11 +337,11 @@ function TasksPageInner() {
                           key={t.id}
                           role="button"
                           tabIndex={0}
-                          onClick={() => router.push(`/tasks?id=${t.id}`)}
+                          onClick={() => void navigate({ to: "/tasks", search: { id: t.id } })}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
-                              router.push(`/tasks?id=${t.id}`);
+                              void navigate({ to: "/tasks", search: { id: t.id } });
                             }
                           }}
                           className={cn(
@@ -415,7 +410,7 @@ function TasksPageInner() {
             {selected && draft && (
               <button
                 type="button"
-                onClick={() => router.push("/tasks")}
+                onClick={() => void navigate({ to: "/tasks" })}
                 className="mx-4 mt-3 inline-flex w-fit items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-soft hover:text-plot-red md:hidden"
               >
                 <svg
@@ -473,7 +468,7 @@ function TasksPageInner() {
         <Dialog
           open={viewMode === "board" && !!selected && !!draft}
           onOpenChange={(open) => {
-            if (!open) router.push("/tasks");
+            if (!open) void navigate({ to: "/tasks" });
           }}
         >
               <DialogContent
@@ -504,7 +499,7 @@ function TasksPageInner() {
                     onChange={setDraft}
                     onSave={() => void save()}
                     onDeleteClick={() => setConfirmDelete(selected.id)}
-                    onClose={() => router.push("/tasks")}
+                    onClose={() => void navigate({ to: "/tasks" })}
                   />
                 )}
               </DialogContent>

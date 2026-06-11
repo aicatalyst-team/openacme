@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Inline preview for binary content served via either `/api/files/...`
  * (tool-side: read_file image/PDF, screenshots) or `/api/attachments/...`
@@ -23,7 +21,6 @@ export function MediaPreview({
     return (
       <div className="px-3 py-2">
         <a href={url} target="_blank" rel="noreferrer" className="block">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={url}
             alt="media"

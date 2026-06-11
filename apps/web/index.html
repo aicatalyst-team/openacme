@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>OpenAcme — AI Agent Platform</title>
+    <meta
+      name="description"
+      content="Multi-LLM agent platform with tool calling, MCP support, and multi-agent orchestration."
+    />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="OpenAcme" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- Hex equivalents of --paper light/dark (oklch 98.5%/16%) — browsers
+         don't take CSS vars in theme-color, so these are precomputed. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fcfaf7" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d0d10" />
+    <!-- Set the dark class before first paint so the user doesn't see a
+         flash. Reads localStorage; falls back to system preference.
+         Mirrors logic in components/ThemeToggle.tsx. -->
+    <script>
+      (function () {
+        try {
+          var k = "openacme.theme";
+          var c = localStorage.getItem(k);
+          var s = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var d = c === "dark" || ((c == null || c === "system") && s);
+          document.documentElement.classList.toggle("dark", d);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-background text-foreground antialiased paper-surface">
+    <div id="root"></div>
+    <script type="module" src="/app/main.tsx"></script>
+  </body>
+</html>

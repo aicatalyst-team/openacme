@@ -1,6 +1,4 @@
-"use client";
-
-import { Suspense, useState, useEffect, useMemo, useRef } from "react";
+import { Suspense, lazy, useState, useEffect, useMemo, useRef } from "react";
 import {
   Plus,
   Trash2,
@@ -12,8 +10,8 @@ import {
   BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { Sidebar } from "../components/Sidebar";
 import { API_BASE } from "../lib/api";
 import type { ToolInfo, ProviderInfo, ModelPreset } from "../lib/types";
@@ -64,7 +62,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/app/components/ui/tabs";
-import dynamic from "next/dynamic";
 import type { EmojiClickData } from "emoji-picker-react";
 import { DynamicIcon, iconNames, type IconName } from "lucide-react/dynamic";
 import { cn } from "@/app/lib/utils";
@@ -178,14 +175,13 @@ const FALLBACK_FORM: FormState = {
 };
 
 // Lazy: emoji data is sizeable and only needed once the picker opens.
-const EmojiPicker = dynamic(() => import("emoji-picker-react"), {
-  ssr: false,
-  loading: () => (
-    <div className="p-6 text-center font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
-      Loading&hellip;
-    </div>
-  ),
-});
+const EmojiPicker = lazy(() => import("emoji-picker-react"));
+
+const EMOJI_PICKER_FALLBACK = (
+  <div className="p-6 text-center font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
+    Loading&hellip;
+  </div>
+);
 
 // Default icon-tab view before the user searches the full set.
 const POPULAR_ICONS = [
@@ -261,14 +257,16 @@ function AvatarField({
             <TabsTrigger value="icons">Icons</TabsTrigger>
           </TabsList>
           <TabsContent value="emoji" className="avatar-emoji-picker mt-0">
-            <EmojiPicker
-              onEmojiClick={(d: EmojiClickData) => pick(d.emoji)}
-              width="100%"
-              height={320}
-              previewConfig={{ showPreview: false }}
-              skinTonesDisabled
-              lazyLoadEmojis
-            />
+            <Suspense fallback={EMOJI_PICKER_FALLBACK}>
+              <EmojiPicker
+                onEmojiClick={(d: EmojiClickData) => pick(d.emoji)}
+                width="100%"
+                height={320}
+                previewConfig={{ showPreview: false }}
+                skinTonesDisabled
+                lazyLoadEmojis
+              />
+            </Suspense>
           </TabsContent>
           <TabsContent value="icons" className="mt-0 p-3">
             <input
@@ -305,20 +303,21 @@ function AvatarField({
   );
 }
 
-export default function AgentsPage() {
-  return (
-    <Suspense fallback={null}>
-      <AgentsPageInner />
-    </Suspense>
-  );
-}
+export const Route = createFileRoute("/agents")({
+  validateSearch: z.object({
+    id: z.coerce.string().optional(),
+    create: z.coerce.string().optional(),
+    import: z.coerce.string().optional(),
+  }),
+  component: AgentsPage,
+});
 
-function AgentsPageInner() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const urlId = searchParams.get("id");
-  const urlCreate = searchParams.get("create") === "1";
-  const urlImportTemplate = searchParams.get("import");
+function AgentsPage() {
+  const navigate = useNavigate();
+  const search = Route.useSearch();
+  const urlId = search.id ?? null;
+  const urlCreate = search.create === "1";
+  const urlImportTemplate = search["import"] ?? null;
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tools, setTools] = useState<ToolInfo[]>([]);
@@ -635,7 +634,7 @@ function AgentsPageInner() {
           );
         }
         await reloadAgents();
-        router.push(`/agents?id=${encodeURIComponent(out.agent.id)}`);
+        void navigate({ to: "/agents", search: { id: out.agent.id } });
       } catch (err) {
         toast.error("Failed to import agent", {
           description: err instanceof Error ? err.message : String(err),
@@ -658,7 +657,7 @@ function AgentsPageInner() {
         const created = (await res.json()) as Agent;
         toast.success("Agent created");
         await reloadAgents();
-        router.push(`/agents?id=${encodeURIComponent(created.id)}`);
+        void navigate({ to: "/agents", search: { id: created.id } });
       } else {
         const data = await res.json();
         toast.error("Failed to create agent", { description: data.error });
@@ -731,7 +730,7 @@ function AgentsPageInner() {
         toast.success("Agent deleted");
         await reloadAgents();
         if (selectedAgent?.id === id) {
-          router.push("/agents");
+          void navigate({ to: "/agents" });
         }
       } else {
         toast.error("Failed to delete agent");
@@ -739,18 +738,6 @@ function AgentsPageInner() {
     } catch {
       toast.error("Failed to delete agent");
     }
-  };
-
-  const resetForm = () => {
-    const defaultProvider = providers[0]?.id ?? FALLBACK_FORM.provider;
-    const defaultModel =
-      providers.find((p) => p.id === defaultProvider)?.models[0]?.id ?? "";
-    setFormData({
-      ...FALLBACK_FORM,
-      provider: defaultProvider,
-      model: defaultModel,
-    });
-    setIsCustomModel(defaultModel === "");
   };
 
   // URL → selection state. ?id=<id> selects an agent; ?create=1 starts
@@ -779,7 +766,7 @@ function AgentsPageInner() {
           ]);
           if (!tplRes.ok || !prevRes.ok) {
             toast.error("Template not found");
-            router.replace("/agents");
+            void navigate({ to: "/agents", replace: true });
             return;
           }
           const tpl = (await tplRes.json()) as CatalogTemplate;
@@ -820,7 +807,7 @@ function AgentsPageInner() {
           );
         } catch {
           toast.error("Failed to load template");
-          router.replace("/agents");
+          void navigate({ to: "/agents", replace: true });
         }
       })();
       return;
@@ -878,33 +865,34 @@ function AgentsPageInner() {
           mcpDisabled: found.mcpDisabled ?? [],
         });
       } else if (agents.length > 0) {
-        router.replace("/agents");
+        void navigate({ to: "/agents", replace: true });
       }
       return;
     }
     setSelectedAgent(null);
     setIsCreating(false);
     setIsEditing(false);
-  }, [urlId, urlCreate, urlImportTemplate, agents, providers, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlId, urlCreate, urlImportTemplate, agents, providers, navigate]);
 
   const selectAgent = (agent: Agent) =>
-    router.push(`/agents?id=${encodeURIComponent(agent.id)}`);
+    void navigate({ to: "/agents", search: { id: agent.id } });
   const startCreate = () => {
     // Catalog has at least one template → ask the user; otherwise jump
     // straight to scratch.
     if (catalogTemplates.length > 0) {
       setCreationModal("choose");
     } else {
-      router.push("/agents?create=1");
+      void navigate({ to: "/agents", search: { create: "1" } });
     }
   };
   const startScratchFromModal = () => {
     setCreationModal("closed");
-    router.push("/agents?create=1");
+    void navigate({ to: "/agents", search: { create: "1" } });
   };
   const startImportFromModal = (templateId: string) => {
     setCreationModal("closed");
-    router.push(`/agents?import=${encodeURIComponent(templateId)}`);
+    void navigate({ to: "/agents", search: { import: templateId } });
   };
 
   // View vs edit: existing agents open in a read-only detail view; the
@@ -1006,7 +994,7 @@ function AgentsPageInner() {
             {(selectedAgent || isCreating) && (
               <button
                 type="button"
-                onClick={() => router.push("/agents")}
+                onClick={() => void navigate({ to: "/agents" })}
                 className="mb-3 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-soft hover:text-plot-red md:hidden"
               >
                 <svg
@@ -1616,7 +1604,7 @@ function McpSection({
             Inherited from global catalog
           </span>
           <Link
-            href="/settings"
+            to="/settings"
             className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft hover:text-plot-red"
           >
             Edit catalog
@@ -2246,7 +2234,7 @@ function SkillsPicker({
         </Label>
         <p className="border border-paper-rule bg-paper-sunk px-3 py-2 font-mono text-[12px] text-ink-soft">
           No skills installed.{" "}
-          <Link href="/skills" className="text-plot-red hover:underline">
+          <Link to="/skills" className="text-plot-red hover:underline">
             Add some
           </Link>{" "}
           and they&apos;ll appear here.

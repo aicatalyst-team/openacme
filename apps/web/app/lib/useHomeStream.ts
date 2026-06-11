@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "./api";
 import type { HomePayload } from "./types";

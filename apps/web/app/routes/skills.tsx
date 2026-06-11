@@ -1,7 +1,6 @@
-"use client";
-
-import { Suspense, useState, useEffect, useMemo } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, useMemo } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { Plus, Search, Trash2, BookOpen, Compass, Pipette } from "lucide-react";
 import { LoadingHairline } from "@/app/components/ui/loading-hairline";
 import { ActiveMarker } from "@/app/components/ui/active-marker";
@@ -32,8 +31,8 @@ import {
 } from "@/app/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/app/components/ui/tabs";
 import { cn } from "@/app/lib/utils";
-import { BrowseTab } from "./browse-tab";
-import { SourcesTab } from "./sources-tab";
+import { BrowseTab } from "../skills/browse-tab";
+import { SourcesTab } from "../skills/sources-tab";
 
 interface SkillIndexEntry {
   name: string;
@@ -56,19 +55,19 @@ interface Skill {
   dirPath?: string;
 }
 
-export default function SkillsPage() {
-  return (
-    <Suspense fallback={null}>
-      <SkillsPageInner />
-    </Suspense>
-  );
-}
+export const Route = createFileRoute("/skills")({
+  validateSearch: z.object({
+    name: z.coerce.string().optional(),
+    create: z.coerce.string().optional(),
+  }),
+  component: SkillsPage,
+});
 
-function SkillsPageInner() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const urlName = searchParams.get("name");
-  const urlCreate = searchParams.get("create") === "1";
+function SkillsPage() {
+  const navigate = useNavigate();
+  const search = Route.useSearch();
+  const urlName = search.name ?? null;
+  const urlCreate = search.create === "1";
 
   const [skills, setSkills] = useState<SkillIndexEntry[]>([]);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
@@ -162,7 +161,7 @@ function SkillsPageInner() {
         const createdName = formData.name.trim();
         setFormData({ name: "", description: "", tags: "", body: "" });
         loadSkills();
-        router.push(`/skills?name=${encodeURIComponent(createdName)}`);
+        void navigate({ to: "/skills", search: { name: createdName } });
       } else {
         const data = await res.json();
         toast.error("Failed to create skill", { description: data.error });
@@ -183,7 +182,7 @@ function SkillsPageInner() {
       if (res.ok) {
         toast.success("Skill deleted");
         loadSkills();
-        router.push("/skills");
+        void navigate({ to: "/skills" });
       } else {
         toast.error("Failed to delete skill");
       }
@@ -227,7 +226,7 @@ function SkillsPageInner() {
           </div>
           {activeTab === "skills" && (
             <div className="flex items-center gap-2">
-              <Button size="sm" onClick={() => router.push("/skills?create=1")}>
+              <Button size="sm" onClick={() => void navigate({ to: "/skills", search: { create: "1" } })}>
                 <Plus className="size-4" />
                 <span className="hidden sm:inline">New skill</span>
               </Button>
@@ -325,7 +324,7 @@ function SkillsPageInner() {
                   return (
                     <button
                       key={skill.name}
-                      onClick={() => router.push(`/skills?name=${encodeURIComponent(skill.name)}`)}
+                      onClick={() => void navigate({ to: "/skills", search: { name: skill.name } })}
                       className={cn(
                         "group relative flex w-full flex-col items-start gap-0.5 border-b border-paper-rule/40 px-4 py-2.5 text-left transition-colors last:border-b-0",
                         isActive
@@ -355,7 +354,7 @@ function SkillsPageInner() {
             {(selectedSkill || isCreating) && (
               <button
                 type="button"
-                onClick={() => router.push("/skills")}
+                onClick={() => void navigate({ to: "/skills" })}
                 className="mb-3 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-soft hover:text-plot-red md:hidden"
               >
                 <svg
@@ -430,7 +429,7 @@ function SkillsPageInner() {
                     />
                   </div>
                   <div className="flex gap-2 justify-end">
-                    <Button variant="outline" onClick={() => router.push("/skills")}>
+                    <Button variant="outline" onClick={() => void navigate({ to: "/skills" })}>
                       Cancel
                     </Button>
                     <Button onClick={createSkill} disabled={saving}>
@@ -480,7 +479,7 @@ function SkillsPageInner() {
                               key={name}
                               variant="ghost"
                               size="xs"
-                              onClick={() => router.push(`/skills?name=${encodeURIComponent(name)}`)}
+                              onClick={() => void navigate({ to: "/skills", search: { name } })}
                             >
                               {name}
                             </Button>
@@ -522,7 +521,7 @@ function SkillsPageInner() {
                   </div>
               </div>
             ) : skills.length === 0 ? (
-              <EmptySkillsState onCreate={() => router.push("/skills?create=1")} />
+              <EmptySkillsState onCreate={() => void navigate({ to: "/skills", search: { create: "1" } })} />
             ) : (
               <NoSkillPicked />
             )}

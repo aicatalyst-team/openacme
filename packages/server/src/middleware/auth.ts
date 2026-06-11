@@ -68,15 +68,16 @@ export function verifySecret(candidate: string, secretSha256: string | null): bo
 export function authMiddleware(opts: AuthOptions): MiddlewareHandler {
   return async (c: Context, next) => {
     const path = c.req.path;
-    if (path === "/login" || path === "/login.html" || path.startsWith("/api/auth/")) {
+    if (path === "/login" || path.startsWith("/api/auth/")) {
       return next();
     }
     // Static assets referenced by the login page itself must bypass auth,
     // otherwise the login HTML loads but its CSS/JS bundles get redirected
     // to /login — page renders unstyled and React never hydrates so the
-    // submit button stays disabled forever.
+    // submit button stays disabled forever. Vite emits all hashed
+    // JS/CSS/font assets under /assets/.
     if (
-      path.startsWith("/_next/") ||
+      path.startsWith("/assets/") ||
       path === "/favicon.ico" ||
       path.startsWith("/favicon")
     ) {

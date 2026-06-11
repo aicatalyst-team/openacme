@@ -1,9 +1,8 @@
-"use client";
-
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Users, Plus, Save, Archive, ArchiveRestore } from "lucide-react";
 import { toast } from "sonner";
-import { useRouter, useSearchParams } from "next/navigation";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { Sidebar } from "../components/Sidebar";
 import { API_BASE } from "../lib/api";
 import { Button } from "@/app/components/ui/button";
@@ -43,18 +42,14 @@ interface Draft {
 
 const EMPTY_DRAFT: Draft = { id: "", name: "", members: [], charter: "" };
 
-export default function TeamsPage() {
-  return (
-    <Suspense fallback={null}>
-      <TeamsPageInner />
-    </Suspense>
-  );
-}
+export const Route = createFileRoute("/teams")({
+  validateSearch: z.object({ id: z.coerce.string().optional() }),
+  component: TeamsPage,
+});
 
-function TeamsPageInner() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const urlId = searchParams.get("id");
+function TeamsPage() {
+  const navigate = useNavigate();
+  const urlId = Route.useSearch().id ?? null;
 
   const [teams, setTeams] = useState<Team[]>([]);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
@@ -114,7 +109,7 @@ function TeamsPageInner() {
   function selectTeam(id: string) {
     setIsCreating(false);
     setSelectedId(id);
-    router.replace(`/teams?id=${encodeURIComponent(id)}`);
+    void navigate({ to: "/teams", search: { id }, replace: true });
   }
 
   function toggleMember(agentId: string) {

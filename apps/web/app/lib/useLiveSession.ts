@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import { readUIMessageStream } from "ai";
 import type { OpenAcmeUIMessage } from "./types";
