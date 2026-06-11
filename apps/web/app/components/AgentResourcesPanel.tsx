@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, Files, FolderUp, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -220,6 +218,7 @@ export function AgentResourcesPanel({
               // @ts-expect-error -- webkitdirectory + directory are non-standard
               // attributes used to pick a folder in Chromium-based browsers.
               webkitdirectory=""
+              // eslint-disable-next-line react/no-unknown-property
               directory=""
               multiple
               onChange={(e) => {

@@ -1,6 +1,5 @@
-"use client";
-
 import { useCallback, useEffect, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
 import {
   Check,
   Key,
@@ -154,7 +153,9 @@ function statePillClass(state: McpServerStatus["state"]): string {
   }
 }
 
-export default function SettingsPage() {
+export const Route = createFileRoute("/settings")({ component: SettingsPage });
+
+function SettingsPage() {
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [configuredKeys, setConfiguredKeys] = useState<Record<string, boolean>>({});
@@ -1984,7 +1985,7 @@ export default function SettingsPage() {
                   <CardHeader>
                     <CardTitle>Shared context (AGENTS.md)</CardTitle>
                     <CardDescription>
-                      Optional. If set, prepended to every agent's system prompt
+                      Optional. If set, prepended to every agent&apos;s system prompt
                       after its persona. Leave blank to remove the file. Saves
                       to{" "}
                       <code className="border border-paper-rule bg-paper-sunk px-1 py-0.5 font-mono text-[11px] text-ink">

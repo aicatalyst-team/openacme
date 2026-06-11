@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ArrowRight } from "lucide-react";
@@ -747,7 +745,7 @@ function TeletypeMarker({
             style={{
               animation: "section-enter 220ms var(--ease-out-quart) both",
               animationDelay: `${startMs + i * stepMs}ms`,
-              //   instead of " " so inline-block spans for whitespace
+              // NBSP instead of " " so inline-block spans for whitespace
               // don't collapse to zero width — "01 · WHAT" would render as
               // "01·WHAT" otherwise.
               whiteSpace: ch === " " ? "pre" : undefined,
@@ -826,7 +824,7 @@ function SubscriptionBlock({
         <div className="space-y-3">
           <p className="max-w-prose text-[14px] leading-relaxed text-ink-soft">
             Already paying for ChatGPT? Sign in with your subscription
-            instead of pasting a key. Your sub's quota applies; no extra
+            instead of pasting a key. Your sub&apos;s quota applies; no extra
             cost.
           </p>
           <div className="flex items-center justify-end">

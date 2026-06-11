@@ -1,12 +1,10 @@
-"use client";
-
 /**
  * Home — the operator's primary surface. Three sections: Waiting,
  * Running, Idle. Sessions whose tasks are all terminal don't appear.
  * Live updates via `useHomeStream` (SSE).
  *
  * Click a row → navigate to `/?session=<id>`. The chat panel in
- * `page.tsx` picks that up and renders the conversation.
+ * the index route picks that up and renders the conversation.
  *
  * `compact` mode = the rail variant rendered alongside an open chat
  * panel. Same data, narrower layout, no right-hand activity column,
@@ -14,9 +12,8 @@
  * persistent session switcher.
  */
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Bell,
   CircleDot,
@@ -33,7 +30,6 @@ import { useHomeStream } from "@/app/lib/useHomeStream";
 import { API_BASE } from "@/app/lib/api";
 import type { SessionSummary } from "@/app/lib/types";
 import { cn } from "@/app/lib/utils";
-import { navigateClient } from "@/app/lib/navigate";
 import { InstallHint } from "@/app/components/InstallHint";
 import { NotificationsPrompt } from "@/app/components/NotificationsPrompt";
 import { AgentRef } from "@/app/components/ui/agent-ref";
@@ -230,7 +226,8 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
         <div className="hidden items-center gap-2 text-sm md:flex">
           <AgentAvatar avatar={s.agentAvatar} size="md" className="text-ink-soft" />
           <Link
-            href={`/agents?id=${encodeURIComponent(s.agentId)}`}
+            to="/agents"
+            search={{ id: s.agentId }}
             onClick={(e) => e.stopPropagation()}
             className="font-medium hover:underline"
           >
@@ -246,7 +243,8 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
         </div>
         <div className="mt-1 flex items-center gap-2 truncate text-[12px] text-ink-soft md:hidden">
           <Link
-            href={`/agents?id=${encodeURIComponent(s.agentId)}`}
+            to="/agents"
+            search={{ id: s.agentId }}
             onClick={(e) => e.stopPropagation()}
             className="truncate hover:underline"
           >
@@ -392,8 +390,7 @@ function Section({
  * disabled-looking button).
  */
 function NewChatPopover({ compact }: { compact: boolean }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [agents, setAgents] = useState<AgentPickerEntry[] | null>(null);
   const [query, setQuery] = useState("");
@@ -483,12 +480,14 @@ function NewChatPopover({ compact }: { compact: boolean }) {
                     // Preserve other params (e.g. ?agentFilter) so
                     // picking a new chat doesn't drop the operator's
                     // filter. Drop ?session — this is a fresh chat.
-                    const params = new URLSearchParams(
-                      searchParams.toString()
-                    );
-                    params.set("agent", a.id);
-                    params.delete("session");
-                    navigateClient(`/?${params.toString()}`);
+                    void navigate({
+                      to: "/",
+                      search: (prev) => ({
+                        ...prev,
+                        agent: a.id,
+                        session: undefined,
+                      }),
+                    });
                   }}
                   className="group flex w-full items-start gap-3 border-b border-paper-rule/40 px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-paper-sunk"
                 >
@@ -533,12 +532,10 @@ function FilterByAgentPopover({
   agentTotals,
   active,
   onPick,
-  compact,
 }: {
   agentTotals: { id: string; name: string; count: number }[];
   active: string | null;
   onPick: (id: string | null) => void;
-  compact: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -698,7 +695,7 @@ function EmptyState({ compact }: { compact: boolean }) {
         </p>
         <div className="mt-4">
           <Button asChild>
-            <Link href="/agents">Create an agent</Link>
+            <Link to="/agents">Create an agent</Link>
           </Button>
         </div>
       </div>
@@ -729,7 +726,8 @@ function EmptyState({ compact }: { compact: boolean }) {
         {agents.map((a) => (
           <li key={a.id}>
             <Link
-              href={`/?agent=${encodeURIComponent(a.id)}`}
+              to="/"
+              search={{ agent: a.id }}
               className="group flex items-start gap-3 border border-paper-rule bg-paper px-3 py-2.5 text-left transition-colors hover:border-plot-red hover:bg-paper-sunk"
             >
               <MessageSquarePlus
@@ -967,13 +965,13 @@ function SearchResultRow({
 }
 
 export function HomeView({ compact = false }: { compact?: boolean } = {}) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const activeSessionId = searchParams.get("session") ?? null;
+  const navigate = useNavigate();
+  const search = useSearch({ strict: false });
+  const activeSessionId = search.session ?? null;
   // Filter the three buckets to one agent. URL-backed (`?agentFilter=`)
   // so refresh and shared links survive. Orthogonal to ?session / ?agent
   // — picking a chip never changes which chat is open. Null = show all.
-  const agentFilter = searchParams.get("agentFilter");
+  const agentFilter = search.agentFilter ?? null;
   const { payload, loading, error, refresh } = useHomeStream();
 
   // Build a lookup of sessionId → agentId so the row click can pin
@@ -992,9 +990,12 @@ export function HomeView({ compact = false }: { compact?: boolean } = {}) {
   // `/api/sessions/:id` and adopts the agent from there.
   // useCallback so the search keydown effect doesn't re-attach
   // on every render via the deps array.
-  const pick = useCallback((sid: string) => {
-    navigateClient(`/?session=${encodeURIComponent(sid)}`);
-  }, []);
+  const pick = useCallback(
+    (sid: string) => {
+      void navigate({ to: "/", search: { session: sid } });
+    },
+    [navigate]
+  );
 
   const deleteSession = async (sid: string) => {
     if (!confirm("Delete this session? Messages and attachments are removed permanently.")) return;
@@ -1010,10 +1011,10 @@ export function HomeView({ compact = false }: { compact?: boolean } = {}) {
     // If the deleted session is the one currently open in the chat panel,
     // clear it from the URL so the page doesn't try to render a gone session.
     if (sid === activeSessionId) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete("session");
-      const qs = params.toString();
-      navigateClient(qs ? `/?${qs}` : "/");
+      void navigate({
+        to: "/",
+        search: (prev) => ({ ...prev, session: undefined }),
+      });
     }
     void refresh({ force: true });
   };
@@ -1240,11 +1241,10 @@ export function HomeView({ compact = false }: { compact?: boolean } = {}) {
   }, [searchQuery, searchResults, searchActiveIndex, setQueryAnimated, pick]);
 
   const setAgentFilter = (next: string | null) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (next == null) params.delete("agentFilter");
-    else params.set("agentFilter", next);
-    const qs = params.toString();
-    navigateClient(qs ? `/?${qs}` : "/");
+    void navigate({
+      to: "/",
+      search: (prev) => ({ ...prev, agentFilter: next ?? undefined }),
+    });
   };
 
   if (loading && !payload) {
@@ -1398,7 +1398,6 @@ export function HomeView({ compact = false }: { compact?: boolean } = {}) {
                   agentTotals={agentTotals}
                   active={agentFilter}
                   onPick={setAgentFilter}
-                  compact={compact}
                 />
               )
             }

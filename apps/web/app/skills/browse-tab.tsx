@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useEffect, useRef, FormEvent } from "react";
 import { Search, Download, ShieldCheck, Check } from "lucide-react";
 import { toast } from "sonner";

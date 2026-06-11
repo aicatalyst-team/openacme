@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { Share, Smartphone, Plus, Home } from "lucide-react";
 

@@ -1,5 +1,3 @@
-"use client";
-
 import { FileText, Image as ImageIcon, X, AlertCircle } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { LoadingHairline } from "@/app/components/ui/loading-hairline";

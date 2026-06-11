@@ -1,7 +1,5 @@
-"use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Dialog,
   DialogContent,
@@ -60,8 +58,8 @@ function score(query: string, label: string, hint?: string): number {
 }
 
 export function CommandPalette() {
-  const router = useRouter();
-  const pathname = usePathname();
+  const navigate = useNavigate();
+  const pathname = useLocation({ select: (l) => l.pathname });
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -121,7 +119,7 @@ export function CommandPalette() {
       icon: Bot,
       avatar: a.avatar,
       onSelect: () => {
-        router.push(`/agents?id=${encodeURIComponent(a.id)}`);
+        void navigate({ to: "/agents", search: { id: a.id } });
         close();
       },
     }));
@@ -133,7 +131,7 @@ export function CommandPalette() {
       icon: Bot,
       avatar: a.avatar,
       onSelect: () => {
-        router.push(`/?agent=${encodeURIComponent(a.id)}`);
+        void navigate({ to: "/", search: { agent: a.id } });
         close();
       },
     }));
@@ -144,7 +142,7 @@ export function CommandPalette() {
         label: "Go to Home",
         icon: Home,
         onSelect: () => {
-          router.push("/");
+          void navigate({ to: "/" });
           close();
         },
       },
@@ -153,7 +151,7 @@ export function CommandPalette() {
         label: "Go to Agents",
         icon: Bot,
         onSelect: () => {
-          router.push("/agents");
+          void navigate({ to: "/agents" });
           close();
         },
       },
@@ -162,7 +160,7 @@ export function CommandPalette() {
         label: "Go to Tasks",
         icon: ListChecks,
         onSelect: () => {
-          router.push("/tasks");
+          void navigate({ to: "/tasks" });
           close();
         },
       },
@@ -171,7 +169,7 @@ export function CommandPalette() {
         label: "Go to Skills",
         icon: BookOpen,
         onSelect: () => {
-          router.push("/skills");
+          void navigate({ to: "/skills" });
           close();
         },
       },
@@ -180,7 +178,7 @@ export function CommandPalette() {
         label: "Go to Settings",
         icon: Settings,
         onSelect: () => {
-          router.push("/settings");
+          void navigate({ to: "/settings" });
           close();
         },
       },
@@ -189,7 +187,7 @@ export function CommandPalette() {
         label: "New agent",
         icon: Plus,
         onSelect: () => {
-          router.push("/agents?new=1");
+          void navigate({ to: "/agents", search: { create: "1" } });
           close();
         },
       },
@@ -228,7 +226,7 @@ export function CommandPalette() {
     if (filteredActions.length > 0)
       out.push({ label: "Actions", items: filteredActions });
     return out;
-  }, [agents, query, router]);
+  }, [agents, query, navigate]);
 
   // Flatten for keyboard nav. Section labels don't count as targets.
   const flat = useMemo(

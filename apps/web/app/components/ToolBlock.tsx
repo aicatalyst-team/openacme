@@ -1,8 +1,6 @@
-"use client";
-
 import { useMemo, useState, type ReactNode } from "react";
 import { ArrowUpRight, ChevronRight, Bell, Clock } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { cn } from "@/app/lib/utils";
 import { Markdown } from "./Markdown";
 import { MediaPreview } from "./MediaPreview";
@@ -60,19 +58,13 @@ const SINGLE_TASK_TOOLS = new Set([
   "task_comments",
 ]);
 
-export function ToolBlock({
-  part,
-  isStreaming,
-}: {
-  part: ToolPart;
-  isStreaming: boolean;
-}) {
+export function ToolBlock({ part }: { part: ToolPart }) {
   const toolName = part.type.slice("tool-".length);
   const known = KNOWN_TOOLS.has(toolName);
   return known ? (
-    <KnownToolBlock part={part} toolName={toolName} isStreaming={isStreaming} />
+    <KnownToolBlock part={part} toolName={toolName} />
   ) : (
-    <UnknownToolBlock part={part} toolName={toolName} isStreaming={isStreaming} />
+    <UnknownToolBlock part={part} toolName={toolName} />
   );
 }
 
@@ -81,13 +73,11 @@ export function ToolBlock({
 function KnownToolBlock({
   part,
   toolName,
-  isStreaming,
 }: {
   part: ToolPart;
   toolName: string;
-  isStreaming: boolean;
 }) {
-  const status = computeStatus(part, isStreaming);
+  const status = computeStatus(part);
   const summary = useMemo(
     () => renderSummary(toolName, part.input, part.output),
     [toolName, part.input, part.output]
@@ -102,10 +92,10 @@ function KnownToolBlock({
       }),
     [toolName, part.input, part.output, part.errorText]
   );
-  const taskHref = useMemo(
+  const taskId = useMemo(
     () =>
       SINGLE_TASK_TOOLS.has(toolName)
-        ? resolveTaskHref(toolName, part.input, part.output)
+        ? resolveTaskId(toolName, part.input, part.output)
         : null,
     [toolName, part.input, part.output]
   );
@@ -116,7 +106,7 @@ function KnownToolBlock({
         toolName={toolName}
         status={status}
         summary={summary}
-        taskHref={taskHref}
+        taskId={taskId}
       />
       {body && <div className="border-t border-paper-rule">{body}</div>}
     </div>
@@ -128,14 +118,12 @@ function KnownToolBlock({
 function UnknownToolBlock({
   part,
   toolName,
-  isStreaming,
 }: {
   part: ToolPart;
   toolName: string;
-  isStreaming: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const status = computeStatus(part, isStreaming);
+  const status = computeStatus(part);
   const hasIO =
     part.input !== undefined ||
     part.output !== undefined ||
@@ -184,12 +172,12 @@ function HeaderRow({
   toolName,
   status,
   summary,
-  taskHref,
+  taskId,
 }: {
   toolName: string;
   status: Status;
   summary: ReactNode;
-  taskHref?: string | null;
+  taskId?: string | null;
 }) {
   return (
     <div className="flex items-center gap-2.5 px-3 py-1.5">
@@ -201,16 +189,17 @@ function HeaderRow({
         </span>
       )}
       {!summary && <span className="flex-1" />}
-      {taskHref && <OpenTaskLink href={taskHref} />}
+      {taskId && <OpenTaskLink taskId={taskId} />}
       <StatusLabel status={status} />
     </div>
   );
 }
 
-function OpenTaskLink({ href }: { href: string }) {
+function OpenTaskLink({ taskId }: { taskId: string }) {
   return (
     <Link
-      href={href}
+      to="/tasks"
+      search={{ id: taskId }}
       onClick={(e) => e.stopPropagation()}
       className="flex shrink-0 items-center gap-1 border border-paper-rule px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft transition-colors hover:border-plot-red hover:text-plot-red focus-visible:border-plot-red focus-visible:text-plot-red focus-visible:outline-none"
     >
@@ -230,7 +219,7 @@ const STATUS_LABEL: Record<Status, string> = {
   interrupted: "Interrupted",
 };
 
-function computeStatus(part: ToolPart, _isStreaming: boolean): Status {
+function computeStatus(part: ToolPart): Status {
   // True "interrupted" tool parts have been sanitized to `output-error` with
   // errorText `[interrupted]` by `finalizeOrphanToolParts` server-side; any
   // input-* state we render is necessarily an in-flight tool call. Don't
@@ -1123,21 +1112,19 @@ function pickTaskId(out: Record<string, unknown> | null): string | undefined {
   return taskIdStr(out.task_id) ?? taskIdStr(out.id);
 }
 
-// Deep-link href for a task tool's "Open" button. Input-side for tools
+// Task id for a task tool's "Open" deep link. Input-side for tools
 // that take an explicit id; output-side for task_create (id is in the
 // returned task envelope and only appears once the call resolves).
-function resolveTaskHref(
+function resolveTaskId(
   name: string,
   input: unknown,
   output: unknown
 ): string | null {
   if (name === "task_create") {
-    const id = pickTaskId(parseJsonish(output));
-    return id ? `/tasks?id=${encodeURIComponent(id)}` : null;
+    return pickTaskId(parseJsonish(output)) ?? null;
   }
   if (!isObj(input)) return null;
-  const id = taskIdStr(input.task_id) ?? taskIdStr(input.id);
-  return id ? `/tasks?id=${encodeURIComponent(id)}` : null;
+  return taskIdStr(input.task_id) ?? taskIdStr(input.id) ?? null;
 }
 
 function countResults(out: Record<string, unknown> | null): number | null {

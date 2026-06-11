@@ -1,8 +1,5 @@
-"use client";
-
 import { useEffect, useLayoutEffect, useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, linkOptions, useLocation } from "@tanstack/react-router";
 import {
   Home,
   Bot,
@@ -16,7 +13,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { API_BASE } from "@/app/lib/api";
-import { navigateClient } from "@/app/lib/navigate";
 import { Logotype } from "@/app/components/Logotype";
 import { Logomark } from "@/app/components/Logomark";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
@@ -25,22 +21,16 @@ import { ActiveMarker } from "@/app/components/ui/active-marker";
 // no width transition: the lab-instrument register prefers an instant snap
 // over animating a layout property (DESIGN.md §6 "Don't animate layout").
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
 // Order matters — Home first (default landing for the workforce
 // operator), then composition pages (Agents, Tasks, Skills), then
 // global config (Settings).
-const navItems: NavItem[] = [
-  { href: "/", label: "Home", icon: Home },
-  { href: "/agents", label: "Agents", icon: Bot },
-  { href: "/teams", label: "Teams", icon: Users },
-  { href: "/tasks", label: "Tasks", icon: ListChecks },
-  { href: "/skills", label: "Skills", icon: BookOpen },
-  { href: "/settings", label: "Settings", icon: Settings },
+const navItems = [
+  { link: linkOptions({ to: "/" }), label: "Home", icon: Home },
+  { link: linkOptions({ to: "/agents" }), label: "Agents", icon: Bot },
+  { link: linkOptions({ to: "/teams" }), label: "Teams", icon: Users },
+  { link: linkOptions({ to: "/tasks" }), label: "Tasks", icon: ListChecks },
+  { link: linkOptions({ to: "/skills" }), label: "Skills", icon: BookOpen },
+  { link: linkOptions({ to: "/settings" }), label: "Settings", icon: Settings },
 ];
 
 const COLLAPSED_KEY = "openacme-sidebar-collapsed";
@@ -55,7 +45,7 @@ const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export function Sidebar({ children }: { children?: React.ReactNode }) {
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (l) => l.pathname });
   const [version, setVersion] = useState<string | null>(null);
   // SSR + first client render both emit `collapsed=true` (same HTML, no
   // hydration warning). The layoutEffect flips it to the persisted value
@@ -153,33 +143,16 @@ export function Sidebar({ children }: { children?: React.ReactNode }) {
           </div>
           {navItems.map((item) => {
             const isActive =
-              item.href === "/"
+              item.link.to === "/"
                 ? pathname === "/"
-                : pathname.startsWith(item.href);
+                : pathname.startsWith(item.link.to);
             const Icon = item.icon;
-            // Home → "/" is a same-route change ONLY when we're already
-            // on the root route (e.g. clearing `?session=X` from the chat
-            // page). In static-export mode Next's <Link> silently no-ops
-            // that case, so we intercept and use `navigateClient`. But
-            // when we're on a different route entirely (`/tasks`,
-            // `/agents`, etc.) the Home link IS a real cross-route nav
-            // and Next's <Link> handles it correctly — don't intercept,
-            // or the page won't re-mount.
-            const interceptHome = item.href === "/" && pathname === "/";
             return (
               <Link
-                key={item.href}
-                href={item.href}
+                key={item.link.to}
+                {...item.link}
                 aria-current={isActive ? "page" : undefined}
                 title={collapsed ? item.label : undefined}
-                onClick={
-                  interceptHome
-                    ? (e) => {
-                        e.preventDefault();
-                        navigateClient("/");
-                      }
-                    : undefined
-                }
                 className={cn(
                   "group relative flex items-center gap-3 text-sm transition-colors",
                   // Mobile drawer + expanded desktop = labeled rows. Desktop
