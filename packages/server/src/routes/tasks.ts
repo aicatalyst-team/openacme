@@ -49,6 +49,7 @@ export function registerTaskRoutes(app: Hono, manager: AgentManager): void {
     const url = new URL(c.req.url);
     const assignee = url.searchParams.get("assignee") ?? undefined;
     const created_by = url.searchParams.get("created_by") ?? undefined;
+    const team = url.searchParams.get("team") ?? undefined;
     const session_id_raw = url.searchParams.get("session_id");
     const status = asStatusFilter(url.searchParams.get("status") ?? undefined);
 
@@ -60,6 +61,7 @@ export function registerTaskRoutes(app: Hono, manager: AgentManager): void {
     const tasks = manager.taskStore.list({
       assignee,
       created_by,
+      team,
       ...(session_id !== undefined ? { session_id } : {}),
       status,
     });
