@@ -276,15 +276,18 @@ export function TaskDetailPanel({
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
           By
         </span>
-        {agents.some((a) => a.id === selected.created_by) ? (
-          <AgentRef
-            id={selected.created_by}
-            label={selected.created_by}
-            className="truncate text-ink-soft"
-          />
-        ) : (
-          <span className="truncate text-ink-soft">{selected.created_by}</span>
-        )}
+        <span className="flex min-w-0 items-baseline gap-1.5 truncate text-ink-soft">
+          {agents.some((a) => a.id === selected.created_by) ? (
+            <AgentRef
+              id={selected.created_by}
+              label={selected.created_by}
+              className="truncate"
+            />
+          ) : (
+            <span className="truncate">{selected.created_by}</span>
+          )}
+          {selected.team && <span>· #{selected.team}</span>}
+        </span>
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
           Created
         </span>
