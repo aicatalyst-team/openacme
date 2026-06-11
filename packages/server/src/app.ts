@@ -1476,39 +1476,29 @@ export async function createApp(config: Config): Promise<{ app: Hono; manager: A
   });
 
   // ── Static Web UI ──
-  // Skipped entirely under the dev proxy — the proxy handles non-API. Otherwise
+  // Skipped when the embedded Vite dev server fronts the UI. Otherwise
   // prefer the bundled path (published install, filled by prepack) and fall
-  // back to the workspace export (e.g. test daemons after `pnpm build`).
-  const inDevProxy = !!process.env["OPENACME_DEV_PROXY_TARGET"];
+  // back to the workspace build (e.g. test daemons after `pnpm build`).
+  const inWebDev = !!process.env["OPENACME_WEB_DEV"];
   const bundledWebDir = path.resolve(__dirname, "../web");
   const workspaceWebDir = path.resolve(__dirname, "../../../apps/web/out");
-  const webDir = !inDevProxy && fs.existsSync(path.join(bundledWebDir, "index.html"))
+  const webDir = !inWebDev && fs.existsSync(path.join(bundledWebDir, "index.html"))
     ? bundledWebDir
-    : !inDevProxy && fs.existsSync(path.join(workspaceWebDir, "index.html"))
+    : !inWebDev && fs.existsSync(path.join(workspaceWebDir, "index.html"))
       ? workspaceWebDir
       : null;
   if (webDir) {
     const { serveStatic } = await import("@hono/node-server/serve-static");
 
-    // Serve static assets (_next, favicon, etc.)
+    // Serve static assets (/assets, favicon, PWA files, etc.)
     app.use("/*", serveStatic({ root: webDir }));
 
-    // Handle Next.js static export routes (e.g., /settings -> settings.html)
-    app.get("*", (c) => {
-      const urlPath = c.req.path;
-
-      // Try to find the corresponding .html file for the route
-      const htmlFile = urlPath === "/"
-        ? path.join(webDir, "index.html")
-        : path.join(webDir, `${urlPath.slice(1)}.html`);
-
-      if (fs.existsSync(htmlFile)) {
-        return c.html(fs.readFileSync(htmlFile, "utf-8"));
-      }
-
-      // Fallback to index.html for SPA routing
-      return c.html(fs.readFileSync(path.join(webDir, "index.html"), "utf-8"));
-    });
+    // SPA fallback: a single index.html; the client router resolves the
+    // route. Read per-request so rebuilding apps/web refreshes a running
+    // daemon without restart.
+    app.get("*", (c) =>
+      c.html(fs.readFileSync(path.join(webDir, "index.html"), "utf-8"))
+    );
   }
 
   return { app, manager };

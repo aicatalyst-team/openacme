@@ -20,7 +20,7 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "env": ["OPENACME_DATA_DIR", "OPENACME_DEV_PROXY_TARGET", "NODE_ENV"]
+      "env": ["OPENACME_DATA_DIR", "OPENACME_WEB_DEV", "NODE_ENV"]
     }
   }
 }
