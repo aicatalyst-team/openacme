@@ -18,10 +18,31 @@ const log = createLogger("tool-host.sandbox");
  * missing Linux system deps), which is loud: startup banner, per-turn
  * UI warning, and a line in every agent's Access section.
  *
- * Network is intentionally permissive in v1 (the ask-callback allows
- * every host): the boundary being shipped here is filesystem. Per-agent
- * network rules are a natural later extension on the same seam.
+ * Posture (the Claude Code pattern): the sandbox boundary is FILESYSTEM
+ * — cross-agent isolation, so an agent can't write what a coworker is
+ * working on. Everything else is open so every agent can install and run
+ * anything inside the box: network is permissive (the ask-callback allows
+ * every host), and Unix sockets + local binding + Apple-service
+ * mach-lookup are all allowed (package managers, dev servers, databases,
+ * socket IPC). This matches the trusted-local-workforce threat model:
+ * the risk is agents clobbering each other's files, not the agent itself.
+ *
+ * Sandbox-incompatible workloads (multi-process Chromium needs a
+ * mach-register the macOS profile can't grant) are NOT forced in-box —
+ * same call Claude Code makes. Browser automation runs OUTSIDE this
+ * sandbox via the `browser_*` tools (BrowserManager, host process),
+ * already uniform for every agent.
  */
+
+// Open everything but the filesystem. Shared by the global init and every
+// per-call override so the relaxed posture is identical across agents.
+const OPEN_NETWORK = {
+  allowedDomains: [] as string[],
+  deniedDomains: [] as string[],
+  allowLocalBinding: true,
+  allowAllUnixSockets: true,
+  allowMachLookup: ["com.apple.*"],
+};
 
 export type SandboxStatus =
   | { supported: true }
@@ -70,11 +91,7 @@ async function ensureInitialized(): Promise<void> {
   if (!initialized) {
     initialized = SandboxManager.initialize(
       {
-        network: {
-          allowedDomains: [],
-          deniedDomains: [],
-          allowLocalBinding: true,
-        },
+        network: OPEN_NETWORK,
         filesystem: {
           denyRead: [],
           allowRead: [],
@@ -107,6 +124,7 @@ export async function wrapSpawn(
     command,
     "/bin/sh",
     {
+      network: OPEN_NETWORK,
       filesystem: {
         denyRead: fsConfig.denyRead,
         allowRead: fsConfig.allowRead,
