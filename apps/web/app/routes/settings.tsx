@@ -888,7 +888,7 @@ function SettingsPage() {
                 </TabsList>
 
           <div className="flex-1 overflow-y-auto px-3 pb-6 pt-1 md:px-6">
-            <div className="mx-auto max-w-3xl">
+            <div className="mx-auto max-w-5xl">
               <TabsContent value="api-keys">
                 <Card>
                   <CardHeader>

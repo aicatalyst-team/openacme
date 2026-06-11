@@ -21,9 +21,10 @@ import { TeamTasksTab, useTeamTasks } from "../teams/tasks";
 import { TeamCharterTab } from "../teams/charter";
 import { TeamCreateForm } from "../teams/create";
 import { putTeam } from "../teams/api";
+import { FileWorkbench } from "../files/FileWorkbench";
 import type { AgentInfo, Team } from "../teams/types";
 
-const TEAM_TABS = ["members", "tasks", "charter"] as const;
+const TEAM_TABS = ["members", "tasks", "charter", "workspace"] as const;
 type TeamTab = (typeof TEAM_TABS)[number];
 
 export const Route = createFileRoute("/teams")({
@@ -246,7 +247,7 @@ function TeamsPage() {
                 />
               </div>
             ) : selected ? (
-              <div className="mx-auto flex max-w-3xl flex-col gap-3">
+              <div className="mx-auto flex max-w-6xl flex-col gap-3">
                 <div className="flex items-center gap-2">
                   {renaming ? (
                     <>
@@ -335,6 +336,7 @@ function TeamsPage() {
                       )}
                     </TabsTrigger>
                     <TabsTrigger value="charter">Charter</TabsTrigger>
+                    <TabsTrigger value="workspace">Workspace</TabsTrigger>
                   </TabsList>
                   <TabsContent value="members">
                     <TeamMembersTab
@@ -350,6 +352,15 @@ function TeamsPage() {
                     <TeamCharterTab
                       team={selected}
                       onChanged={() => void refresh()}
+                    />
+                  </TabsContent>
+                  <TabsContent value="workspace">
+                    <FileWorkbench
+                      root={{
+                        kind: "team",
+                        id: selected.id,
+                        scope: "workspace",
+                      }}
                     />
                   </TabsContent>
                 </Tabs>

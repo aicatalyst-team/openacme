@@ -349,6 +349,44 @@ describe("tasks", () => {
   });
 });
 
+describe("skills edit", () => {
+  it("PUT updates body/tags and 404s on unknown names", async () => {
+    const create = await req("/api/skills", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "triage",
+        description: "Triage issues",
+        tags: ["ops"],
+        body: "# v1",
+      }),
+    });
+    expect(create.status).toBe(201);
+
+    const update = await req("/api/skills/triage", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "# v2", tags: ["ops", "github"] }),
+    });
+    expect(update.status).toBe(200);
+    const updated = (await update.json()) as {
+      body: string;
+      tags: string[];
+      description: string;
+    };
+    expect(updated.body.trim()).toBe("# v2");
+    expect(updated.tags).toEqual(["ops", "github"]);
+    expect(updated.description).toBe("Triage issues");
+
+    const missing = await req("/api/skills/nope", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "x" }),
+    });
+    expect(missing.status).toBe(404);
+  });
+});
+
 describe("teams", () => {
   it("creates, fetches, and updates a team; manager must be a member", async () => {
     await createAgent();

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
-import { Plus, Search, Trash2, BookOpen, Compass, Pipette } from "lucide-react";
+import { Plus, Search, Trash2, BookOpen, Compass, Pencil, Pipette } from "lucide-react";
 import { LoadingHairline } from "@/app/components/ui/loading-hairline";
 import { ActiveMarker } from "@/app/components/ui/active-marker";
 import { toast } from "sonner";
@@ -31,6 +31,13 @@ import {
 } from "@/app/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/app/components/ui/tabs";
 import { cn } from "@/app/lib/utils";
+import { Markdown } from "../components/Markdown";
+import { FileWorkbench } from "../files/FileWorkbench";
+import {
+  FilePreviewDialog,
+  type FilePreviewTarget,
+} from "../files/FilePreviewDialog";
+import { useFileLinkResolver } from "../files/useFileLinkResolver";
 import { BrowseTab } from "../skills/browse-tab";
 import { SourcesTab } from "../skills/sources-tab";
 
@@ -375,7 +382,7 @@ function SkillsPage() {
               </button>
             )}
             {isCreating ? (
-              <Card className="mx-auto max-w-3xl">
+              <Card className="mx-auto max-w-5xl">
                 <CardHeader>
                   <CardTitle>Create skill</CardTitle>
                   <CardDescription>
@@ -442,13 +449,22 @@ function SkillsPage() {
             ) : selectedSkill ? (
               // Ruled sections on the pane, not a floating card — same
               // measure + treatment as the agents + tasks detail panes.
-              <div className="mx-auto max-w-3xl">
-                  <div className="flex flex-row items-start justify-between gap-4 border-b border-paper-rule pb-4">
+              <div className="mx-auto max-w-5xl">
+                  <div className="flex flex-row items-start justify-between gap-4 pb-2">
                     <div>
                       <CardTitle className="text-xl">{selectedSkill.name}</CardTitle>
                       <CardDescription className="mt-1.5">
                         {selectedSkill.description}
                       </CardDescription>
+                      {selectedSkill.tags.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {selectedSkill.tags.map((tag) => (
+                            <Badge key={tag} variant="outline">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <Button
                       variant="ghost-destructive"
@@ -459,66 +475,16 @@ function SkillsPage() {
                       Delete
                     </Button>
                   </div>
-                  <div className="divide-y divide-paper-rule [&>*]:py-4">
-                    {selectedSkill.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {selectedSkill.tags.map((tag) => (
-                          <Badge key={tag} variant="outline">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-
-                    {selectedSkill.relatedSkills.length > 0 && (
-                      <div>
-                        <Label className="mb-2 block">Related</Label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedSkill.relatedSkills.map((name) => (
-                            <Button
-                              key={name}
-                              variant="ghost"
-                              size="xs"
-                              onClick={() => void navigate({ to: "/skills", search: { name } })}
-                            >
-                              {name}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedSkill.resources && selectedSkill.resources.length > 0 && (
-                      <div>
-                        <Label className="mb-2 block">
-                          Resources ({selectedSkill.resources.length})
-                        </Label>
-                        <ul className="border-y border-paper-rule font-mono text-[12px]">
-                          {selectedSkill.resources.map((r) => (
-                            <li
-                              key={r.relPath}
-                              className="flex justify-between gap-4 border-b border-paper-rule/40 last:border-b-0 px-3 py-1 text-ink-soft tabular-nums"
-                            >
-                              <span className="truncate">{r.relPath}</span>
-                              <span className="shrink-0 text-ink-faint">{r.size}B</span>
-                            </li>
-                          ))}
-                        </ul>
-                        {selectedSkill.dirPath && (
-                          <p className="mt-2 font-mono text-[11px] text-ink-faint">
-                            {selectedSkill.dirPath}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    <div>
-                      <Label className="mb-2 block">Instructions</Label>
-                      <pre className="border border-paper-rule bg-paper-sunk p-4 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-words text-ink">
-                        {selectedSkill.body || "(No instructions)"}
-                      </pre>
-                    </div>
-                  </div>
+                  <SkillDetailTabs
+                    skill={selectedSkill}
+                    onPickRelated={(name) =>
+                      void navigate({ to: "/skills", search: { name } })
+                    }
+                    onSaved={(updated) => {
+                      setSelectedSkill(updated);
+                      void loadSkills();
+                    }}
+                  />
               </div>
             ) : skills.length === 0 ? (
               <EmptySkillsState onCreate={() => void navigate({ to: "/skills", search: { create: "1" } })} />
@@ -566,6 +532,210 @@ function SkillsPage() {
   );
 }
 
+function SkillDetailTabs({
+  skill,
+  onPickRelated,
+  onSaved,
+}: {
+  skill: Skill;
+  onPickRelated: (name: string) => void;
+  onSaved: (updated: Skill) => void;
+}) {
+  // SKILL.md bodies reference sibling files ("see references/api.md") —
+  // linkify spans that resolve inside the skill's folder.
+  const linkOwner = useMemo(
+    () => ({ kind: "skill", id: skill.name }) as const,
+    [skill.name]
+  );
+  const linkSources = useMemo(
+    () => [{ id: skill.name, text: skill.body }],
+    [skill.name, skill.body]
+  );
+  const fileLinks = useFileLinkResolver(linkOwner, linkSources);
+  const [previewTarget, setPreviewTarget] =
+    useState<FilePreviewTarget | null>(null);
+
+  // View-is-the-editor: pencil flips the body/description/tags into
+  // fields, PUT /api/skills/:name persists. Name is fixed (folder id).
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState({
+    description: skill.description,
+    tags: skill.tags.join(", "),
+    body: skill.body,
+  });
+  useEffect(() => {
+    setEditing(false);
+    setDraft({
+      description: skill.description,
+      tags: skill.tags.join(", "),
+      body: skill.body,
+    });
+  }, [skill.name, skill.description, skill.tags, skill.body]);
+
+  const saveSkill = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/skills/${encodeURIComponent(skill.name)}`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            description: draft.description.trim(),
+            tags: draft.tags
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean),
+            body: draft.body,
+          }),
+        }
+      );
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(data.error || res.statusText);
+      }
+      onSaved((await res.json()) as Skill);
+      setEditing(false);
+      toast.success("Skill updated");
+    } catch (err) {
+      toast.error("Failed to update skill", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <Tabs defaultValue="skill" className="mt-1">
+        <TabsList>
+          <TabsTrigger value="skill">Skill</TabsTrigger>
+          <TabsTrigger value="files">Files</TabsTrigger>
+        </TabsList>
+        <TabsContent value="skill">
+          <div className="space-y-4">
+            {!editing && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  aria-label="Edit skill"
+                  title="Edit skill"
+                  className="p-1 text-ink-faint transition-colors hover:text-ink"
+                >
+                  <Pencil className="size-3.5" aria-hidden />
+                </button>
+              </div>
+            )}
+            {editing ? (
+              <div className="space-y-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="skill-edit-desc">Description</Label>
+                  <Input
+                    id="skill-edit-desc"
+                    value={draft.description}
+                    onChange={(e) =>
+                      setDraft({ ...draft, description: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="skill-edit-tags">
+                    Tags (comma-separated)
+                  </Label>
+                  <Input
+                    id="skill-edit-tags"
+                    value={draft.tags}
+                    onChange={(e) =>
+                      setDraft({ ...draft, tags: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="skill-edit-body">
+                    Instructions (Markdown)
+                  </Label>
+                  <Textarea
+                    id="skill-edit-body"
+                    value={draft.body}
+                    onChange={(e) =>
+                      setDraft({ ...draft, body: e.target.value })
+                    }
+                    rows={16}
+                    className="font-mono text-[12px]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" disabled={saving} onClick={() => void saveSkill()}>
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={saving}
+                    onClick={() => {
+                      setDraft({
+                        description: skill.description,
+                        tags: skill.tags.join(", "),
+                        body: skill.body,
+                      });
+                      setEditing(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
+                <Markdown fileLinks={fileLinks} onOpenFile={setPreviewTarget}>
+                  {skill.body || "(No instructions)"}
+                </Markdown>
+              </div>
+            )}
+
+            {skill.relatedSkills.length > 0 && (
+              <div>
+                <Label className="mb-2 block">Related</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {skill.relatedSkills.map((name) => (
+                    <Button
+                      key={name}
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => onPickRelated(name)}
+                    >
+                      {name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+        <TabsContent value="files">
+          <FileWorkbench
+            root={{ kind: "skill", id: skill.name, scope: "files" }}
+          />
+          {skill.dirPath && (
+            <p className="mt-2 font-mono text-[11px] text-ink-faint">
+              {skill.dirPath}
+            </p>
+          )}
+        </TabsContent>
+      </Tabs>
+      <FilePreviewDialog
+        target={previewTarget}
+        onClose={() => setPreviewTarget(null)}
+      />
+    </>
+  );
+}
+
 function EmptySkillsState({ onCreate }: { onCreate: () => void }) {
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
@@ -573,7 +743,7 @@ function EmptySkillsState({ onCreate }: { onCreate: () => void }) {
     return () => clearTimeout(t);
   }, []);
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-5xl">
       <SectionEyebrow meta="0 skills">No skills installed</SectionEyebrow>
 
       <div className="mt-6 border border-paper-rule paper-surface">
@@ -640,7 +810,7 @@ function NoSkillPicked() {
   // mini-reference doubles as documentation: a reader who lands here
   // without selecting anything learns the SKILL.md contract.
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-5xl">
       <SectionEyebrow>Select a skill</SectionEyebrow>
       <p className="mt-3 max-w-prose text-[13px] leading-relaxed text-ink-soft">
         Pick a row from the index to view its body and edit frontmatter.

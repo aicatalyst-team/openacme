@@ -66,7 +66,12 @@ import type { EmojiClickData } from "emoji-picker-react";
 import { DynamicIcon, iconNames, type IconName } from "lucide-react/dynamic";
 import { cn } from "@/app/lib/utils";
 import { Markdown } from "@/app/components/Markdown";
-import { AgentResourcesPanel } from "@/app/components/AgentResourcesPanel";
+import { FileWorkbench } from "@/app/files/FileWorkbench";
+import {
+  FilePreviewDialog,
+  type FilePreviewTarget,
+} from "@/app/files/FilePreviewDialog";
+import { useFileLinkResolver } from "@/app/files/useFileLinkResolver";
 
 type CacheTtl = "5m" | "1h";
 
@@ -303,11 +308,22 @@ function AvatarField({
   );
 }
 
+const AGENT_TABS = [
+  "overview",
+  "tools",
+  "skills",
+  "mcp",
+  "workspace",
+  "resources",
+] as const;
+type AgentTab = (typeof AGENT_TABS)[number];
+
 export const Route = createFileRoute("/agents")({
   validateSearch: z.object({
     id: z.coerce.string().optional(),
     create: z.coerce.string().optional(),
     import: z.coerce.string().optional(),
+    tab: z.enum(AGENT_TABS).optional().catch(undefined),
   }),
   component: AgentsPage,
 });
@@ -318,6 +334,7 @@ function AgentsPage() {
   const urlId = search.id ?? null;
   const urlCreate = search.create === "1";
   const urlImportTemplate = search["import"] ?? null;
+  const detailTab: AgentTab = search.tab ?? "overview";
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tools, setTools] = useState<ToolInfo[]>([]);
@@ -1019,13 +1036,29 @@ function AgentsPage() {
                 agent={selectedAgent}
                 globalServers={globalMcp}
                 allSkills={allSkills}
+                toolGroups={toolsByToolset}
+                onAgentUpdated={(updated) => {
+                  setSelectedAgent(updated);
+                  void reloadAgents();
+                }}
+                tab={detailTab}
+                onTabChange={(next) =>
+                  void navigate({
+                    to: "/agents",
+                    search: {
+                      id: selectedAgent.id,
+                      tab: next === "overview" ? undefined : next,
+                    },
+                    replace: true,
+                  })
+                }
                 onEdit={() => setIsEditing(true)}
                 onDelete={() => setConfirmDelete(selectedAgent.id)}
               />
             ) : showForm ? (
               <form
                 onSubmit={isCreating ? handleCreate : handleUpdate}
-                className="mx-auto max-w-3xl space-y-4"
+                className="mx-auto max-w-6xl space-y-4"
               >
                 {urlImportTemplate && importTemplate && importPreview && (
                   <ImportPreviewBlock
@@ -1280,43 +1313,47 @@ function AgentsPage() {
                     />
                   </div>
 
-                  <ToolPicker
-                    groups={toolsByToolset}
-                    selected={formData.tools}
-                    onToggle={toggleTool}
-                  />
+                  {/* Tools / MCP / skills configuration lives on the detail
+                        tabs for existing agents — the form carries them only
+                        at creation time so a new agent starts configured. */}
+                  {isCreating && (
+                    <>
+                      <ToolPicker
+                        groups={toolsByToolset}
+                        selected={formData.tools}
+                        onToggle={toggleTool}
+                      />
 
-                  <McpSection
-                    globalServers={globalMcp}
-                    privateServers={formData.mcpServers}
-                    disabled={formData.mcpDisabled}
-                    onToggleInherit={toggleGlobalMcpInherit}
-                    onAdd={() => setMcpDialog({ mode: "add" })}
-                    onEdit={(name, cfg) =>
-                      setMcpDialog({
-                        mode: "edit",
-                        initial: { name, config: cfg },
-                      })
-                    }
-                    onRemove={handleMcpRemove}
-                  />
+                      <McpSection
+                        globalServers={globalMcp}
+                        privateServers={formData.mcpServers}
+                        disabled={formData.mcpDisabled}
+                        onToggleInherit={toggleGlobalMcpInherit}
+                        onAdd={() => setMcpDialog({ mode: "add" })}
+                        onEdit={(name, cfg) =>
+                          setMcpDialog({
+                            mode: "edit",
+                            initial: { name, config: cfg },
+                          })
+                        }
+                        onRemove={handleMcpRemove}
+                      />
 
-                  {/* The skills picker gates which workforce skills the
-                        agent sees in its prompt. Hidden during catalog
-                        import — bundled skills install workforce-wide and
-                        the imported agent's allowlist stays empty (sees
-                        all). Visible when editing / creating from scratch. */}
-                  {!urlImportTemplate && (
-                    <SkillsPicker
-                      all={allSkills}
-                      selected={formData.skills}
-                      onToggle={toggleSkill}
-                    />
+                      {/* The skills picker gates which workforce skills the
+                            agent sees in its prompt. Hidden during catalog
+                            import — bundled skills install workforce-wide and
+                            the imported agent's allowlist stays empty (sees
+                            all). */}
+                      {!urlImportTemplate && (
+                        <SkillsPicker
+                          all={allSkills}
+                          selected={formData.skills}
+                          onToggle={toggleSkill}
+                        />
+                      )}
+                    </>
                   )}
 
-                  {selectedAgent && (
-                    <AgentResourcesPanel agentId={selectedAgent.id} />
-                  )}
                 </div>
 
                 <div className="mt-4 flex items-center justify-between">
@@ -1895,7 +1932,7 @@ function ImportPreviewBlock({
 function EmptyWorkforceState({ onCreate }: { onCreate: () => void }) {
   const rowDelay = (i: number) => 80 + i * 120;
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-6xl">
       <SectionEyebrow meta="0 agents">The workforce is empty</SectionEyebrow>
 
       <div className="mt-6 border border-dashed border-paper-rule paper-surface opacity-80">
@@ -2009,7 +2046,7 @@ function EmptyWorkforceState({ onCreate }: { onCreate: () => void }) {
 
 function NoAgentPicked() {
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-6xl">
       <SectionEyebrow>Select an agent</SectionEyebrow>
       <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">
         Pick a row from the roster to view its model, persona, tools, and
@@ -2024,32 +2061,28 @@ function AgentDetail({
   agent,
   globalServers,
   allSkills,
+  toolGroups,
+  tab,
+  onTabChange,
+  onAgentUpdated,
   onEdit,
   onDelete,
 }: {
   agent: Agent;
   globalServers: Record<string, MCPServerConfigDto>;
   allSkills: SkillIndexEntry[];
+  toolGroups: [string, ToolInfo[]][];
+  tab: AgentTab;
+  onTabChange: (tab: AgentTab) => void;
+  onAgentUpdated: (updated: Agent) => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const disabledSet = new Set(agent.mcpDisabled ?? []);
-  const privateServers = Object.entries(agent.mcpServers ?? {});
-  const inheritedServers = Object.entries(globalServers).filter(
-    ([name]) => !disabledSet.has(name),
-  );
-  const skillEntries = (agent.skills ?? [])
-    .map(
-      (name) =>
-        allSkills.find((s) => s.name === name) ?? { name, description: "" },
-    )
-    .filter(Boolean);
-
   // Detail is ruled sections on the pane, not a floating card — one shared
   // measure with the skills + tasks detail panes.
   return (
-    <div className="mx-auto max-w-3xl">
-      <div className="flex flex-row items-start justify-between gap-4 border-b border-paper-rule pb-4">
+    <div className="mx-auto max-w-6xl">
+      <div className="flex flex-row items-start justify-between gap-4 pb-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <CardTitle className="text-xl">
@@ -2091,8 +2124,103 @@ function AgentDetail({
           </div>
         )}
       </div>
+      <Tabs
+        value={tab}
+        onValueChange={(v) => onTabChange(v as AgentTab)}
+        className="mt-1"
+      >
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="tools">
+            Tools
+            <span className="tabular-nums text-ink-faint">
+              {agent.tools.length}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="skills">Skills</TabsTrigger>
+          <TabsTrigger value="mcp">MCP</TabsTrigger>
+          <TabsTrigger value="workspace">Workspace</TabsTrigger>
+          <TabsTrigger value="resources">Resources</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview">
+          <AgentOverviewTab agent={agent} onSaved={onAgentUpdated} />
+        </TabsContent>
+        <TabsContent value="tools">
+          <AgentToolsTab
+            agent={agent}
+            groups={toolGroups}
+            onSaved={onAgentUpdated}
+          />
+        </TabsContent>
+        <TabsContent value="skills">
+          <AgentSkillsTab
+            agent={agent}
+            allSkills={allSkills}
+            onSaved={onAgentUpdated}
+          />
+        </TabsContent>
+        <TabsContent value="mcp">
+          <AgentMcpTab
+            agent={agent}
+            globalServers={globalServers}
+            onSaved={onAgentUpdated}
+          />
+        </TabsContent>
+        <TabsContent value="workspace">
+          <FileWorkbench
+            root={{ kind: "agent", id: agent.id, scope: "workspace" }}
+          />
+        </TabsContent>
+        <TabsContent value="resources">
+          <FileWorkbench
+            root={{ kind: "agent", id: agent.id, scope: "resources" }}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function AgentOverviewTab({
+  agent,
+  onSaved,
+}: {
+  agent: Agent;
+  onSaved: (updated: Agent) => void;
+}) {
+  // Persona prose references files ("use template.json") — linkify the
+  // spans that resolve under the agent's roots, same as chat.
+  const linkOwner = useMemo(
+    () => ({ kind: "agent", id: agent.id }) as const,
+    [agent.id],
+  );
+  const linkSources = useMemo(
+    () => [{ id: agent.id, text: agent.persona }],
+    [agent.id, agent.persona],
+  );
+  const fileLinks = useFileLinkResolver(linkOwner, linkSources);
+  const [previewTarget, setPreviewTarget] =
+    useState<FilePreviewTarget | null>(null);
+
+  // Role + persona edit in place, same view-is-the-editor pattern as the
+  // config tabs; identity/model edits stay on the header's Edit form.
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    role: agent.role ?? "",
+    persona: agent.persona,
+  });
+  useEffect(() => {
+    setEditing(false);
+    setDraft({ role: agent.role ?? "", persona: agent.persona });
+  }, [agent.id, agent.role, agent.persona]);
+  const { saving, save } = useSliceSave(agent, onSaved);
+  const dirty =
+    draft.role !== (agent.role ?? "") || draft.persona !== agent.persona;
+
+  return (
+    <>
       <div className="divide-y divide-paper-rule [&>*]:py-5">
-        {agent.role && (
+        {(agent.role || editing) && (
           <div>
             <Label className="mb-1.5 block">
               Role
@@ -2100,117 +2228,427 @@ function AgentDetail({
                 visible to other agents
               </span>
             </Label>
-            <p className="text-[13px] leading-relaxed text-ink-soft">
-              {agent.role}
-            </p>
+            {editing ? (
+              <Textarea
+                value={draft.role}
+                onChange={(e) => setDraft({ ...draft, role: e.target.value })}
+                rows={2}
+                placeholder="Third-person, one paragraph — what coworkers should know."
+              />
+            ) : (
+              <p className="text-[13px] leading-relaxed text-ink-soft">
+                {agent.role}
+              </p>
+            )}
           </div>
         )}
 
         <div>
-          <Label className="mb-1.5 block">Persona</Label>
-          <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
-            <Markdown>{agent.persona}</Markdown>
+          <div className="mb-1.5 flex items-center justify-between">
+            <Label className="m-0 block">Persona</Label>
+            {!agent.managed && !editing && (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                aria-label="Edit role and persona"
+                title="Edit role and persona"
+                className="p-1 text-ink-faint transition-colors hover:text-ink"
+              >
+                <Pencil className="size-3.5" aria-hidden />
+              </button>
+            )}
           </div>
-        </div>
-
-        <div>
-          <Label className="mb-1.5 block">
-            Tools
-            <span className="ml-2 font-normal text-ink-faint">
-              {agent.tools.length} configurable
-            </span>
-          </Label>
-          {agent.tools.length === 0 ? (
-            <p className="font-mono text-[12px] text-ink-faint">None.</p>
+          {editing ? (
+            <Textarea
+              value={draft.persona}
+              onChange={(e) => setDraft({ ...draft, persona: e.target.value })}
+              rows={12}
+              className="font-mono text-[12px]"
+            />
           ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {agent.tools.map((t) => (
-                <Badge
-                  key={t}
-                  variant="outline"
-                  className="font-mono text-[11px]"
-                >
-                  {t}
-                </Badge>
-              ))}
+            <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
+              <Markdown fileLinks={fileLinks} onOpenFile={setPreviewTarget}>
+                {agent.persona}
+              </Markdown>
+            </div>
+          )}
+          {editing && (
+            <div className="mt-3 flex items-center gap-2">
+              <Button
+                size="sm"
+                disabled={saving || !dirty}
+                onClick={() =>
+                  void save(
+                    { role: draft.role, persona: draft.persona },
+                    "Persona"
+                  ).then((ok) => {
+                    if (ok) setEditing(false);
+                  })
+                }
+              >
+                <Save className="size-4" />
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={saving}
+                onClick={() => {
+                  setDraft({ role: agent.role ?? "", persona: agent.persona });
+                  setEditing(false);
+                }}
+              >
+                Cancel
+              </Button>
             </div>
           )}
         </div>
-
-        {skillEntries.length > 0 && (
-          <div>
-            <Label className="mb-1.5 block flex items-center gap-2">
-              <BookOpen className="size-3.5 text-ink-soft" />
-              Skills
-              <span className="font-normal text-ink-faint">
-                {skillEntries.length} enabled
-              </span>
-            </Label>
-            <div className="flex flex-wrap gap-1.5">
-              {skillEntries.map((s) => (
-                <Badge
-                  key={s.name}
-                  variant="outline"
-                  className="font-mono text-[11px]"
-                >
-                  {s.name}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div>
-          <Label className="mb-1.5 block flex items-center gap-2">
-            <Boxes className="size-3.5 text-ink-soft" />
-            MCP servers
-          </Label>
-          {inheritedServers.length === 0 && privateServers.length === 0 ? (
-            <p className="font-mono text-[12px] text-ink-faint">None.</p>
-          ) : (
-            <ul className="border-y border-paper-rule">
-              {inheritedServers.map(([name, cfg]) => (
-                <li
-                  key={`g-${name}`}
-                  className="flex items-center gap-3 border-b border-paper-rule/40 last:border-b-0 px-3 py-1.5"
-                >
-                  <Badge variant="outline" className="font-mono text-[10px]">
-                    inherited
-                  </Badge>
-                  <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">
-                    {name}
-                  </span>
-                  <span className="shrink-0 truncate font-mono text-[11px] text-ink-faint max-w-[40%]">
-                    {cfg.command
-                      ? `${cfg.command}${cfg.args && cfg.args.length > 0 ? " " + cfg.args.join(" ") : ""}`
-                      : (cfg.url ?? "")}
-                  </span>
-                </li>
-              ))}
-              {privateServers.map(([name, cfg]) => (
-                <li
-                  key={`p-${name}`}
-                  className="flex items-center gap-3 border-b border-paper-rule/40 last:border-b-0 px-3 py-1.5"
-                >
-                  <Badge variant="outline" className="font-mono text-[10px]">
-                    private
-                  </Badge>
-                  <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">
-                    {name}
-                  </span>
-                  <span className="shrink-0 truncate font-mono text-[11px] text-ink-faint max-w-[40%]">
-                    {cfg.command
-                      ? `${cfg.command}${cfg.args && cfg.args.length > 0 ? " " + cfg.args.join(" ") : ""}`
-                      : (cfg.url ?? "")}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <AgentResourcesPanel agentId={agent.id} readOnly={agent.managed} />
       </div>
+      <FilePreviewDialog
+        target={previewTarget}
+        onClose={() => setPreviewTarget(null)}
+      />
+    </>
+  );
+}
+
+/** Save/discard affordance shared by the per-slice config tabs. Renders
+ *  nothing until the local draft diverges from the saved agent. */
+function ConfigSaveBar({
+  dirty,
+  saving,
+  onSave,
+  onDiscard,
+}: {
+  dirty: boolean;
+  saving: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+}) {
+  if (!dirty) return null;
+  return (
+    <div className="mt-4 flex items-center gap-2 border-t border-paper-rule pt-3">
+      <Button size="sm" disabled={saving} onClick={onSave}>
+        <Save className="size-4" />
+        Save changes
+      </Button>
+      <Button size="sm" variant="ghost" disabled={saving} onClick={onDiscard}>
+        Discard
+      </Button>
+    </div>
+  );
+}
+
+async function putAgentSlice(
+  agentId: string,
+  slice: Record<string, unknown>
+): Promise<Agent> {
+  const res = await fetch(
+    `${API_BASE}/api/agents/${encodeURIComponent(agentId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(slice),
+    }
+  );
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error || res.statusText);
+  }
+  return (await res.json()) as Agent;
+}
+
+function useSliceSave(
+  agent: Agent,
+  onSaved: (updated: Agent) => void
+): {
+  saving: boolean;
+  save: (slice: Record<string, unknown>, label: string) => Promise<boolean>;
+} {
+  const [saving, setSaving] = useState(false);
+  const save = async (slice: Record<string, unknown>, label: string) => {
+    setSaving(true);
+    try {
+      const updated = await putAgentSlice(agent.id, slice);
+      onSaved(updated);
+      toast.success(`${label} updated`);
+      return true;
+    } catch (err) {
+      toast.error(`Failed to update ${label.toLowerCase()}`, {
+        description: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+  return { saving, save };
+}
+
+function sameStringSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((x) => set.has(x));
+}
+
+function AgentToolsTab({
+  agent,
+  groups,
+  onSaved,
+}: {
+  agent: Agent;
+  groups: [string, ToolInfo[]][];
+  onSaved: (updated: Agent) => void;
+}) {
+  const [selected, setSelected] = useState<string[]>(agent.tools);
+  useEffect(() => {
+    setSelected(agent.tools);
+  }, [agent.id, agent.tools]);
+  const { saving, save } = useSliceSave(agent, onSaved);
+
+  if (agent.managed) {
+    return (
+      <div className="py-2">
+        <p className="mb-3 font-mono text-[12px] text-ink-faint">
+          Platform-managed — tools are owned by the bundled template.
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {agent.tools.map((t) => (
+            <Badge key={t} variant="outline" className="font-mono text-[11px]">
+              {t}
+            </Badge>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-2">
+      <ToolPicker
+        groups={groups}
+        selected={selected}
+        onToggle={(name) =>
+          setSelected((prev) =>
+            prev.includes(name)
+              ? prev.filter((t) => t !== name)
+              : [...prev, name]
+          )
+        }
+      />
+      <ConfigSaveBar
+        dirty={!sameStringSet(selected, agent.tools)}
+        saving={saving}
+        onSave={() => void save({ tools: selected }, "Tools")}
+        onDiscard={() => setSelected(agent.tools)}
+      />
+    </div>
+  );
+}
+
+function AgentSkillsTab({
+  agent,
+  allSkills,
+  onSaved,
+}: {
+  agent: Agent;
+  allSkills: SkillIndexEntry[];
+  onSaved: (updated: Agent) => void;
+}) {
+  const savedSkills = useMemo(() => agent.skills ?? [], [agent.skills]);
+  const [selected, setSelected] = useState<string[]>(savedSkills);
+  useEffect(() => {
+    setSelected(savedSkills);
+  }, [agent.id, savedSkills]);
+  const { saving, save } = useSliceSave(agent, onSaved);
+
+  if (agent.managed) {
+    return (
+      <div className="py-2">
+        <p className="mb-3 font-mono text-[12px] text-ink-faint">
+          Platform-managed — the skill allowlist is owned by the bundled
+          template.
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {savedSkills.length === 0 ? (
+            <p className="font-mono text-[12px] text-ink-faint">
+              All workforce skills visible.
+            </p>
+          ) : (
+            savedSkills.map((s) => (
+              <Badge key={s} variant="outline" className="font-mono text-[11px]">
+                {s}
+              </Badge>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-2">
+      <SkillsPicker
+        all={allSkills}
+        selected={selected}
+        onToggle={(name) =>
+          setSelected((prev) =>
+            prev.includes(name)
+              ? prev.filter((s) => s !== name)
+              : [...prev, name]
+          )
+        }
+      />
+      <ConfigSaveBar
+        dirty={!sameStringSet(selected, savedSkills)}
+        saving={saving}
+        onSave={() => void save({ skills: selected }, "Skills")}
+        onDiscard={() => setSelected(savedSkills)}
+      />
+    </div>
+  );
+}
+
+function AgentMcpTab({
+  agent,
+  globalServers,
+  onSaved,
+}: {
+  agent: Agent;
+  globalServers: Record<string, MCPServerConfigDto>;
+  onSaved: (updated: Agent) => void;
+}) {
+  const savedServers = useMemo(
+    () => agent.mcpServers ?? {},
+    [agent.mcpServers]
+  );
+  const savedDisabled = useMemo(
+    () => agent.mcpDisabled ?? [],
+    [agent.mcpDisabled]
+  );
+  const [servers, setServers] =
+    useState<Record<string, MCPServerConfigDto>>(savedServers);
+  const [disabled, setDisabled] = useState<string[]>(savedDisabled);
+  const [dialog, setDialog] = useState<
+    { mode: "add" } | { mode: "edit"; initial: MCPServerFormValue } | null
+  >(null);
+  useEffect(() => {
+    setServers(savedServers);
+    setDisabled(savedDisabled);
+  }, [agent.id, savedServers, savedDisabled]);
+  const { saving, save } = useSliceSave(agent, onSaved);
+
+  const dirty =
+    !sameStringSet(disabled, savedDisabled) ||
+    JSON.stringify(servers) !== JSON.stringify(savedServers);
+
+  const handleTest = async (
+    value: MCPServerFormValue
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    tools?: string[];
+    transport?: string;
+  }> => {
+    const res = await fetch(`${API_BASE}/api/mcp/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value.config),
+    });
+    return (await res.json()) as {
+      ok: boolean;
+      error?: string;
+      tools?: string[];
+      transport?: string;
+    };
+  };
+
+  if (agent.managed) {
+    return (
+      <div className="py-2">
+        <p className="font-mono text-[12px] text-ink-faint">
+          Platform-managed — MCP servers are owned by the bundled template.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-2">
+      <McpSection
+        globalServers={globalServers}
+        privateServers={servers}
+        disabled={disabled}
+        onToggleInherit={(name) =>
+          setDisabled((prev) =>
+            prev.includes(name)
+              ? prev.filter((n) => n !== name)
+              : [...prev, name]
+          )
+        }
+        onAdd={() => setDialog({ mode: "add" })}
+        onEdit={(name, cfg) =>
+          setDialog({ mode: "edit", initial: { name, config: cfg } })
+        }
+        onRemove={(name) =>
+          setServers((prev) => {
+            const next = { ...prev };
+            delete next[name];
+            return next;
+          })
+        }
+      />
+      <ConfigSaveBar
+        dirty={dirty}
+        saving={saving}
+        onSave={() =>
+          void save({ mcpServers: servers, mcpDisabled: disabled }, "MCP")
+        }
+        onDiscard={() => {
+          setServers(savedServers);
+          setDisabled(savedDisabled);
+        }}
+      />
+
+      <Dialog
+        open={dialog !== null}
+        onOpenChange={(open) => !open && setDialog(null)}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {dialog?.mode === "edit"
+                ? `Edit '${dialog.initial.name}'`
+                : "Add agent-private MCP server"}
+            </DialogTitle>
+            <DialogDescription>
+              Private to this agent only. Names cannot collide with the global
+              catalog in Settings → MCP.
+            </DialogDescription>
+          </DialogHeader>
+          {dialog && (
+            <DialogBody>
+              <MCPServerForm
+                initial={dialog.mode === "edit" ? dialog.initial : undefined}
+                lockName={dialog.mode === "edit"}
+                reservedNames={[
+                  ...Object.keys(globalServers),
+                  ...(dialog.mode === "add" ? Object.keys(servers) : []),
+                ]}
+                onSubmit={(value) => {
+                  setServers((prev) => ({
+                    ...prev,
+                    [value.name]: value.config,
+                  }));
+                  setDialog(null);
+                }}
+                onCancel={() => setDialog(null)}
+                onTest={handleTest}
+              />
+            </DialogBody>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

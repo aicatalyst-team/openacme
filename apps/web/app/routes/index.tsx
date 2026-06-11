@@ -31,6 +31,14 @@ import { ScribedRule } from "@/app/components/ui/scribed-rule";
 import { JargonChip } from "@/app/components/ui/jargon-chip";
 import { ChatSetupPanel } from "../components/ChatSetupPanel";
 import {
+  FilePreviewDialog,
+  type FilePreviewTarget,
+} from "../files/FilePreviewDialog";
+import {
+  useFileLinkResolver,
+  type FileLinkTarget,
+} from "../files/useFileLinkResolver";
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -513,6 +521,31 @@ function ChatPage() {
   }, []);
 
   const activeAgent = agents.find((a) => a.id === activeAgentId);
+
+  // File-path linkification: inline code spans in assistant prose that
+  // resolve to real files under the agent's roots open a preview dialog.
+  // The streaming message settles at end of turn; it's scanned then.
+  const linkOwner = useMemo(
+    () =>
+      activeAgentId ? ({ kind: "agent", id: activeAgentId } as const) : null,
+    [activeAgentId]
+  );
+  const linkSources = useMemo(
+    () =>
+      messages.flatMap((m, i) => {
+        if (m.role !== "assistant") return [];
+        if (isStreaming && i === messages.length - 1) return [];
+        const text = m.parts
+          .filter((p) => (p as { type?: unknown }).type === "text")
+          .map((p) => (p as { text: string }).text)
+          .join("\n");
+        return text ? [{ id: m.id, text }] : [];
+      }),
+    [messages, isStreaming]
+  );
+  const fileLinks = useFileLinkResolver(linkOwner, linkSources);
+  const [previewTarget, setPreviewTarget] =
+    useState<FilePreviewTarget | null>(null);
 
   // Provider gate from the model catalog.
   const activeModalities = (() => {
@@ -1030,6 +1063,8 @@ function ChatPage() {
                     msg.role === "assistant" &&
                     i === messages.length - 1
                   }
+                  fileLinks={fileLinks}
+                  onOpenFile={setPreviewTarget}
                 />
               ))}
               {error && (
@@ -1251,6 +1286,10 @@ function ChatPage() {
         </div>
       </main>
       )}
+      <FilePreviewDialog
+        target={previewTarget}
+        onClose={() => setPreviewTarget(null)}
+      />
     </div>
   );
 }
@@ -1341,10 +1380,14 @@ const MessageBubble = memo(function MessageBubble({
   message,
   agent,
   isStreaming,
+  fileLinks,
+  onOpenFile,
 }: {
   message: UIMessage;
   agent?: Agent;
   isStreaming: boolean;
+  fileLinks?: Map<string, FileLinkTarget>;
+  onOpenFile?: (target: FileLinkTarget) => void;
 }) {
   if (message.role === "system") return null;
 
@@ -1501,7 +1544,9 @@ const MessageBubble = memo(function MessageBubble({
             if (!text) return null;
             return (
               <div key={i} className="text-sm leading-relaxed text-ink break-words">
-                <Markdown>{text}</Markdown>
+                <Markdown fileLinks={fileLinks} onOpenFile={onOpenFile}>
+                  {text}
+                </Markdown>
                 {isStreaming && i === lastTextIdx && (
                   <span className="cursor-stream" aria-hidden />
                 )}

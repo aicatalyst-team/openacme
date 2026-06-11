@@ -486,3 +486,22 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+
+/* Shiki dual-theme output (file preview code rendering). Generated with
+   defaultColor: false, so both modes apply explicitly off the same HTML —
+   keyed on the .dark class the ThemeToggle flips on <html>. */
+.file-code-preview .shiki,
+.file-code-preview .shiki span {
+  color: var(--shiki-light);
+  background-color: transparent;
+}
+.dark .file-code-preview .shiki,
+.dark .file-code-preview .shiki span {
+  color: var(--shiki-dark);
+}
+/* Reading surface, not an editor — soft-wrap long lines instead of
+   forcing a horizontal scrollbar. */
+.file-code-preview .shiki {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

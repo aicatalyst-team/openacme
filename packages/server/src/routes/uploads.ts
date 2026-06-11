@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createLogger } from "@openacme/config/logger";
 import type { AgentManager } from "../agent-manager.js";
-import { serveBinaryFile } from "./_serve-helpers.js";
+import { serveFileWithRange } from "./_serve-helpers.js";
 
 const log = createLogger("server.uploads");
 
@@ -248,7 +248,7 @@ export function registerUploadsRoutes(
       if (!abs.startsWith(path.resolve(attachmentsRoot) + path.sep)) {
         return c.json({ error: "Path escapes root" }, 400);
       }
-      return serveBinaryFile(c, abs, filename);
+      return serveFileWithRange(c, abs, filename);
     }
   );
 

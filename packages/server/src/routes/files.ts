@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import type { Hono } from "hono";
 import type { AgentManager } from "../agent-manager.js";
-import { serveBinaryFile } from "./_serve-helpers.js";
+import { serveFileWithRange } from "./_serve-helpers.js";
 
 /**
  * `/api/files/:sessionId/:fileId/:filename` — static-style serve for
@@ -49,7 +49,7 @@ export function registerFilesRoutes(app: Hono, manager: AgentManager): void {
       if (!abs.startsWith(path.resolve(sessionDir) + path.sep)) {
         return c.json({ error: "Path escapes root" }, 400);
       }
-      return serveBinaryFile(c, abs, filename);
+      return serveFileWithRange(c, abs, filename);
     }
   );
 }
