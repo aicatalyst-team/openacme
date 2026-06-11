@@ -104,6 +104,34 @@ describe("file-based TeamStore (folder + TEAM.md)", () => {
     expect(store.teamsFor("nobody")).toEqual([]);
   });
 
+  it("manager round-trips and must be a member", () => {
+    const store = createTeamStore(teamsDir);
+    store.upsert({ ...makeTeam("website", ["zoe", "max"]), manager: "zoe" });
+
+    const raw = fs.readFileSync(
+      path.join(teamsDir, "website", "TEAM.md"),
+      "utf-8"
+    );
+    expect(matter(raw).data["manager"]).toBe("zoe");
+    expect(store.get("website")!.manager).toBe("zoe");
+
+    expect(() =>
+      store.upsert({ ...makeTeam("website", ["zoe", "max"]), manager: "intruder" })
+    ).toThrow(/must be a member/);
+  });
+
+  it("vacant manager seat serializes as key absence, not null", () => {
+    const store = createTeamStore(teamsDir);
+    store.upsert({ ...makeTeam("website"), manager: null });
+    const raw = fs.readFileSync(
+      path.join(teamsDir, "website", "TEAM.md"),
+      "utf-8"
+    );
+    expect("manager" in matter(raw).data).toBe(false);
+    // Re-read parses to no manager (undefined), not a YAML null artifact.
+    expect(store.get("website")!.manager).toBeUndefined();
+  });
+
   it("archived flag round-trips and stays absent when false-y", () => {
     const store = createTeamStore(teamsDir);
     store.upsert({ ...makeTeam("done"), archived: true });

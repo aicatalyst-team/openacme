@@ -252,6 +252,11 @@ export class AgentManager {
       commentStore: this.commentStore,
       eventStore: this.eventStore,
       validateSession: (id) => this.sessionStore.get(id) !== null,
+      resolveTeamManager: (teamId) => {
+        const team = this.teamStore.get(teamId);
+        if (!team || team.archived) return null;
+        return team.manager ?? null;
+      },
     });
     bindTaskStore({ store: this.taskStore });
 
@@ -1194,7 +1199,30 @@ export class AgentManager {
   updateTeam(id: string, updates: Partial<TeamDefinition>): TeamDefinition {
     const existing = this.teamStore.get(id);
     if (!existing) throw new Error(`Team not found: ${id}`);
+    // Archiving drops the team from prompts and revokes workspace writes —
+    // live team-tagged work would strand. Require a clean slate first.
+    if (updates.archived && !existing.archived) {
+      const open = this.taskStore
+        .list({ team: id })
+        .filter((t) => t.status !== "done" && t.status !== "canceled");
+      if (open.length > 0) {
+        throw new Error(
+          `Cannot archive team '${id}': ${open.length} open task${open.length === 1 ? "" : "s"} still tagged to it (e.g. #${open[0]!.id} "${open[0]!.title}"). Close or cancel them first.`
+        );
+      }
+    }
     const updated: TeamDefinition = { ...existing, ...updates, id };
+    // A members update that drops the current manager would trip the
+    // manager-must-be-member validation; treat it as vacating the seat
+    // unless the caller set a new manager explicitly.
+    if (
+      updates.members &&
+      updates.manager === undefined &&
+      updated.manager &&
+      !updated.members.includes(updated.manager)
+    ) {
+      updated.manager = null;
+    }
     this.teamStore.upsert(updated);
     const affected = new Set([...existing.members, ...updated.members]);
     for (const member of affected) this.evictAgent(member);
@@ -1661,6 +1689,8 @@ export class AgentManager {
       id: t.id,
       name: t.name,
       members: t.members,
+      manager: t.manager ?? null,
+      isManager: t.manager === def.id,
       charter: t.charter,
       workspaceDir: this.teamStore.workspaceDir(t.id)!,
     }));

@@ -13,6 +13,12 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["app/**/*.ts", "app/**/*.tsx", "vite.config.ts"],
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "test/**/*.ts",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ],
   "exclude": ["node_modules", "out"]
 }

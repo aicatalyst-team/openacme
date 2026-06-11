@@ -4,7 +4,9 @@ import type { Team } from "./types";
 
 export async function putTeam(
   teamId: string,
-  patch: Partial<Pick<Team, "name" | "charter" | "members" | "archived">>
+  patch: Partial<
+    Pick<Team, "name" | "charter" | "members" | "archived" | "manager">
+  >
 ): Promise<boolean> {
   const res = await fetch(
     `${API_BASE}/api/teams/${encodeURIComponent(teamId)}`,

@@ -196,6 +196,7 @@ function TeamsPage() {
                     <div className="truncate font-mono text-[11px] tabular-nums text-ink-faint">
                       {team.members.length} member
                       {team.members.length === 1 ? "" : "s"}
+                      {team.manager && ` · mgr ${team.manager}`}
                     </div>
                   </div>
                 </button>
@@ -275,6 +276,12 @@ function TeamsPage() {
                       <h2 className="truncate text-base font-semibold text-ink">
                         {selected.name}
                       </h2>
+                      <span
+                        title="Team id — how tasks and agents address this team. Fixed at creation."
+                        className="shrink-0 font-mono text-[12px] text-ink-faint"
+                      >
+                        {selected.id}
+                      </span>
                       <button
                         type="button"
                         onClick={() => {

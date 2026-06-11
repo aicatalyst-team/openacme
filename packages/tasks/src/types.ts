@@ -107,7 +107,10 @@ export interface Task extends TaskFrontmatter {
 
 export interface TaskCreate {
   title: string;
-  assignee: string;
+  /** Omittable only when `team` is set and the store has a manager
+   *  resolver — the task then lands on the team's manager for triage.
+   *  Stored tasks always end up with a concrete assignee. */
+  assignee?: string;
   created_by: string;
   body?: string;
   session_id?: string | null;

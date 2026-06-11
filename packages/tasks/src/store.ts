@@ -143,6 +143,11 @@ export interface TaskStoreOptions {
    *  prevents agents from hallucinating session uuids that would become
    *  scheduler zombies. */
   validateSession?: (id: string) => boolean;
+  /** Optional: team-id → manager agent id (null when the team is
+   *  unknown, archived, or has no manager). When provided, `create`
+   *  with a team and no assignee resolves the assignee to the manager
+   *  at the write boundary — stored tasks always carry one. */
+  resolveTeamManager?: (teamId: string) => string | null;
 }
 
 function isoNow(): string {
@@ -191,11 +196,13 @@ export class TaskStore {
   private readonly commentStore: CommentStorePort | null;
   private readonly eventStore: EventStorePort | null;
   private readonly validateSession: ((id: string) => boolean) | null;
+  private readonly resolveTeamManager: ((teamId: string) => string | null) | null;
 
   constructor(readonly tasksDir: string, options: TaskStoreOptions = {}) {
     this.commentStore = options.commentStore ?? null;
     this.eventStore = options.eventStore ?? null;
     this.validateSession = options.validateSession ?? null;
+    this.resolveTeamManager = options.resolveTeamManager ?? null;
     this.adoptNonSequenceIds();
   }
 
@@ -344,6 +351,25 @@ export class TaskStore {
   // ── Writes ────────────────────────────────────────────────────────
 
   async create(input: TaskCreate): Promise<Task> {
+    if (!input.assignee && !input.team) {
+      throw new TaskStoreError(
+        "invalid_input",
+        "assignee is required (or set `team` to route the task to that team's manager)"
+      );
+    }
+    // Team-addressed creation: no assignee + a team resolves to the
+    // team's manager at the write boundary, so stored tasks always
+    // carry a concrete assignee and the wake path stays assignee-only.
+    if (!input.assignee && input.team) {
+      const manager = this.resolveTeamManager?.(input.team) ?? null;
+      if (!manager) {
+        throw new TaskStoreError(
+          "no_team_manager",
+          `assignee is required — team ${JSON.stringify(input.team)} has no manager to route to`
+        );
+      }
+      input = { ...input, assignee: manager };
+    }
     const parsed = TaskCreateInputSchema.safeParse(input);
     if (!parsed.success) {
       throw new TaskStoreError(
@@ -352,6 +378,9 @@ export class TaskStore {
       );
     }
     input = parsed.data as TaskCreate;
+    // Post-parse, assignee is schema-guaranteed (resolution above filled
+    // any team-addressed omission).
+    const assignee = input.assignee!;
     return this.withMutex(CREATE_LOCK, async () => {
       const id = String(this.lastAllocated() + 1);
       const all = this.list();
@@ -437,7 +466,7 @@ export class TaskStore {
         id,
         title: input.title,
         status,
-        assignee: input.assignee,
+        assignee,
         session_id: input.session_id ?? null,
         created_by: input.created_by,
         parent_id: input.parent_id ?? null,

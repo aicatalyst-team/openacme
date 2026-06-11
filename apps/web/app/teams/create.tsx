@@ -2,11 +2,15 @@ import { useState } from "react";
 import { Save } from "lucide-react";
 import { toast } from "sonner";
 import { API_BASE } from "../lib/api";
+import { AgentAvatar } from "@/app/components/ui/agent-avatar";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import { Label } from "@/app/components/ui/label";
 import { cn } from "@/app/lib/utils";
+import { AddMemberPicker } from "./members";
+import { ManagerBadge } from "./manager-badge";
+import { MemberRowMenu } from "./row-menu";
 import {
   EMPTY_DRAFT,
   TEAM_CHARTER_CHAR_LIMIT,
@@ -26,12 +30,18 @@ export function TeamCreateForm({
   const [saving, setSaving] = useState(false);
 
   function toggleMember(agentId: string) {
-    setDraft((d) => ({
-      ...d,
-      members: d.members.includes(agentId)
+    setDraft((d) => {
+      const members = d.members.includes(agentId)
         ? d.members.filter((m) => m !== agentId)
-        : [...d.members, agentId],
-    }));
+        : [...d.members, agentId];
+      return {
+        ...d,
+        members,
+        // Deselecting the manager-member vacates the seat.
+        manager:
+          d.manager !== null && members.includes(d.manager) ? d.manager : null,
+      };
+    });
   }
 
   async function create() {
@@ -55,6 +65,7 @@ export function TeamCreateForm({
           id,
           name: draft.name.trim(),
           members: draft.members,
+          manager: draft.manager,
           charter: draft.charter,
         }),
       });
@@ -103,26 +114,55 @@ export function TeamCreateForm({
             No agents yet — create agents first.
           </p>
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {agents.map((agent) => {
-              const isMember = draft.members.includes(agent.id);
-              return (
-                <button
-                  key={agent.id}
-                  type="button"
-                  onClick={() => toggleMember(agent.id)}
-                  className={cn(
-                    "rounded-full border border-paper-rule px-3 py-1 text-sm transition-colors",
-                    isMember
-                      ? "bg-ink text-paper"
-                      : "bg-paper text-ink-soft hover:bg-paper-sunk"
-                  )}
-                >
-                  {agent.name}
-                </button>
-              );
-            })}
-          </div>
+          <>
+            {draft.members.length > 0 && (
+              <div className="flex flex-col border border-paper-rule">
+                {draft.members.map((memberId) => {
+                  const agent = agents.find((a) => a.id === memberId);
+                  return (
+                    <div
+                      key={memberId}
+                      className="flex items-center gap-3 border-b border-paper-rule/40 px-4 py-2.5 last:border-b-0"
+                    >
+                      <AgentAvatar avatar={agent?.avatar} size="md" />
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <span className="shrink-0 text-sm font-medium text-ink">
+                          {agent?.name ?? memberId}
+                        </span>
+                        {draft.manager === memberId && <ManagerBadge />}
+                        {agent?.role && (
+                          <span className="truncate text-xs text-ink-faint">
+                            {agent.role}
+                          </span>
+                        )}
+                      </div>
+                      <MemberRowMenu
+                        name={agent?.name ?? memberId}
+                        isManager={draft.manager === memberId}
+                        onToggleManager={() =>
+                          setDraft((d) => ({
+                            ...d,
+                            manager:
+                              d.manager === memberId ? null : memberId,
+                          }))
+                        }
+                        onRemove={() => toggleMember(memberId)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <AddMemberPicker
+              candidates={agents.filter((a) => !draft.members.includes(a.id))}
+              onAdd={(id) => toggleMember(id)}
+            />
+            <p className="text-xs text-ink-faint">
+              Optionally mark one member as manager — team-addressed tasks
+              (no assignee) land on them for triage. A routing default, not
+              authority.
+            </p>
+          </>
         )}
       </div>
 
@@ -137,7 +177,7 @@ export function TeamCreateForm({
           rows={10}
           placeholder={
             "What this team is for, how it works, conventions.\n" +
-            'Injected into every member\'s context — e.g. "Zoe is the manager and splits incoming work."'
+            'Injected into every member\'s context — e.g. "Ship one growth experiment a week; results go in the team workspace."'
           }
         />
         <div className="flex items-baseline justify-between gap-2">
