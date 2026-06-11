@@ -1,6 +1,7 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { FileLinkTarget } from "../files/useFileLinkResolver";
 
 const components: Components = {
   p: (props) => <p className="mb-3 last:mb-0 leading-relaxed" {...props} />,
@@ -75,11 +76,68 @@ const components: Components = {
   ),
 };
 
+function textOf(children: React.ReactNode): string | null {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children) && children.every((c) => typeof c === "string")) {
+    return children.join("");
+  }
+  return null;
+}
+
 // Memoized: parsing is O(message length) and runs per render — without
 // this, every streamed token re-parses every message in the thread.
-export const Markdown = memo(function Markdown({ children }: { children: string }) {
+// `fileLinks` maps inline-code text to a previewable file (see
+// useFileLinkResolver); identity-stable between resolution arrivals so
+// the memo keeps its streaming win.
+export const Markdown = memo(function Markdown({
+  children,
+  fileLinks,
+  onOpenFile,
+}: {
+  children: string;
+  fileLinks?: Map<string, FileLinkTarget>;
+  onOpenFile?: (target: FileLinkTarget) => void;
+}) {
+  const linkified = useMemo<Components | null>(() => {
+    if (!fileLinks || fileLinks.size === 0 || !onOpenFile) return null;
+    return {
+      ...components,
+      code: ({ className, children: codeChildren, ...rest }) => {
+        const isBlock = /language-/.test(className ?? "");
+        if (isBlock) {
+          return (
+            <code
+              className={`${className ?? ""} font-mono text-[0.85em]`}
+              {...rest}
+            >
+              {codeChildren}
+            </code>
+          );
+        }
+        const text = textOf(codeChildren);
+        const target = text ? fileLinks.get(text) : undefined;
+        if (target) {
+          return (
+            <button
+              type="button"
+              onClick={() => onOpenFile(target)}
+              title={`Preview ${target.relPath}`}
+              className="cursor-pointer underline decoration-dotted underline-offset-2 transition-colors hover:text-plot-red"
+            >
+              <code {...rest}>{codeChildren}</code>
+            </button>
+          );
+        }
+        return <code {...rest}>{codeChildren}</code>;
+      },
+    };
+  }, [fileLinks, onOpenFile]);
+
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={linkified ?? components}
+    >
       {children}
     </ReactMarkdown>
   );
