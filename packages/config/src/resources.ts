@@ -66,13 +66,17 @@ function walk(
 }
 
 /**
- * Validate a POSIX relPath under `<agentDir>/resources/` and return the
- * absolute on-disk path. Rejects traversal and dotfile segments.
- * Returns `null` for invalid input.
+ * Validate a POSIX relPath against a root directory and return the
+ * absolute on-disk path, or `null` for anything that could escape the
+ * root (traversal segments, NUL bytes, leading slash). Dot-prefixed
+ * segments are rejected by default; `allowDotSegments` admits them
+ * (`.`/`..` stay rejected regardless) for surfaces that deliberately
+ * expose dotfiles.
  */
-export function resolveResourcePath(
-  agentDir: string,
-  relPath: string
+export function resolveContainedPath(
+  rootDir: string,
+  relPath: string,
+  opts?: { allowDotSegments?: boolean }
 ): string | null {
   if (typeof relPath !== "string" || relPath.length === 0) return null;
   // Normalize: POSIX separators only, no leading slash, no NUL.
@@ -82,11 +86,22 @@ export function resolveResourcePath(
   for (const seg of parts) {
     if (seg.length === 0) return null;
     if (seg === "." || seg === "..") return null;
-    if (seg.startsWith(".")) return null;
+    if (!opts?.allowDotSegments && seg.startsWith(".")) return null;
   }
-  const resourcesDir = path.join(agentDir, "resources");
-  const abs = path.resolve(path.join(resourcesDir, parts.join(path.sep)));
-  const root = path.resolve(resourcesDir);
+  const abs = path.resolve(path.join(rootDir, parts.join(path.sep)));
+  const root = path.resolve(rootDir);
   if (!(abs === root || abs.startsWith(root + path.sep))) return null;
   return abs;
+}
+
+/**
+ * Validate a POSIX relPath under `<agentDir>/resources/` and return the
+ * absolute on-disk path. Rejects traversal and dotfile segments.
+ * Returns `null` for invalid input.
+ */
+export function resolveResourcePath(
+  agentDir: string,
+  relPath: string
+): string | null {
+  return resolveContainedPath(path.join(agentDir, "resources"), relPath);
 }

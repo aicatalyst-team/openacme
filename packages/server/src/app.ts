@@ -29,11 +29,11 @@ import { authMiddleware } from "./middleware/auth.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerUploadsRoutes, type UploadsContext } from "./routes/uploads.js";
 import { registerFilesRoutes } from "./routes/files.js";
+import { registerFsRoutes } from "./routes/fs.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerTeamRoutes } from "./routes/teams.js";
 import { registerSetupRoutes, setDefaultModelIfUnset } from "./routes/setup.js";
 import { registerSkillsHubRoutes } from "./routes/skills-hub.js";
-import { registerAgentResourceRoutes } from "./routes/agent-resources.js";
 import { registerAgentCatalogRoutes } from "./routes/agent-catalog.js";
 import { registerStreamRoutes } from "./routes/streams.js";
 import { registerHomeRoutes } from "./routes/home.js";
@@ -149,6 +149,10 @@ export async function createApp(config: Config): Promise<{ app: Hono; manager: A
   // routes/files.ts for the trust-model distinction.
   registerFilesRoutes(app, manager);
 
+  // Scoped file browser API: agent workspace/resources + team workspace
+  // (listing, Range-capable bytes, batch stat for the chat linkifier).
+  registerFsRoutes(app, manager, config);
+
   // Tasks: founder read/edit/delete. POST is intentionally absent — task
   // creation is agent-only via the `task_create` tool.
   registerTaskRoutes(app, manager);
@@ -156,11 +160,6 @@ export async function createApp(config: Config): Promise<{ app: Hono; manager: A
   // Teams: human-owned rosters + charters. No DELETE (archive instead);
   // no agent-side write path by design.
   registerTeamRoutes(app, manager);
-
-  // Per-agent resource files under `<agentDir>/resources/`. Mounted
-  // before the generic /api/agents/:id routes since the path-collisions
-  // (`:id/resources` vs `:id`) are disambiguated by the segment.
-  registerAgentResourceRoutes(app, manager);
 
   // Bundled agent catalog — browse + import templates. Mount before the
   // generic /api/agents/:id so /api/agents/catalog/* takes the specific path.

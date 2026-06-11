@@ -56,6 +56,7 @@ export {
 
 export {
   listAgentResources,
+  resolveContainedPath,
   resolveResourcePath,
   MAX_RESOURCES_PER_AGENT,
   type AgentResource,
