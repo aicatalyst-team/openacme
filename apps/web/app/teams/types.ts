@@ -4,6 +4,9 @@ export interface Team {
   name: string;
   members: string[];
   archived?: boolean;
+  // Routing default: team-addressed tasks (team set, no assignee) land
+  // on the manager for triage. Must be a member.
+  manager?: string | null;
   charter: string;
 }
 
@@ -18,10 +21,17 @@ export interface Draft {
   id: string;
   name: string;
   members: string[];
+  manager: string | null;
   charter: string;
 }
 
-export const EMPTY_DRAFT: Draft = { id: "", name: "", members: [], charter: "" };
+export const EMPTY_DRAFT: Draft = {
+  id: "",
+  name: "",
+  members: [],
+  manager: null,
+  charter: "",
+};
 
 // mirrored (not imported) — TEAM_CHARTER_CHAR_LIMIT in
 // @openacme/agent-core prompt.ts: charters share this budget across all

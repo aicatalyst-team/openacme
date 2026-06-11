@@ -329,48 +329,44 @@ Under `browser` in `config.yaml`: `enabled` (default true), `provider` (default 
 
 ---
 
-## Tasks & the scheduler
+## Tasks & the dispatcher
 
 `@openacme/tasks` is one filesystem store under `<dataDir>/tasks/<id>.md` (YAML frontmatter + markdown body), shared by all agents. Per-agent isolation is by `assignee`, not by store. `task_list` / `task_view` / `task_create` / `task_update` / `task_comment` / `task_comments` are **system tools** (always on, hidden from the picker; see `SYSTEM_TOOLS` in `packages/tools/src/system.ts`). `agent_list` is also a system tool — every agent can look up its coworkers (id, name, role) without it being a configurable choice.
 
 Tasks are documents (filesystem). **Comments and events live in SQLite** (`task_comments`, `task_events`) — they're message-shaped (high-frequency, append-only, queryable) and don't belong inside the task body. Body is the spec; comments are the discussion; events are the signal log.
 
 `TaskStore` enforces the invariants:
-- cycle-free `depends_on` (DFS on write); unmet deps force `blocked`, satisfied deps auto-flip back to `open`.
+- cycle-free `depends_on` (DFS on write). `blocked` is **explicit-only** — deps don't auto-flip status; readiness (`deps satisfied AND start_at due`) is a read-time predicate the dispatcher evaluates fresh each tick.
 - at most one `in_progress` per `session_id`.
-- on `done`, dependents auto-unblock; a **recurring** task self-resets to `open` with the next fire time (so the returned status is `open`, not `done`) — `canceled` is the only way to stop a recurrence permanently.
+- a **recurring** task marked `done` self-resets to `open` with the next fire time (so the returned status is `open`, not `done`) — `canceled` is the only way to stop a recurrence permanently.
 - inputs validated against the frontmatter schema at the write boundary so a bad PATCH can't land malformed YAML on disk.
-- `addComment`, `listComments`, `latestResult`, `commentCounts` delegate to the injected `CommentStore`. Mutating paths (`create` / `update` / `addComment` / `unblockDependents`) emit events via the injected `EventStore`. Both stores are optional — tests can omit them and the methods no-op.
+- stored tasks always carry a concrete `assignee`. **Team-addressed creation**: `create` with `team` set and no assignee resolves the assignee to the team's `manager` via the injected `resolveTeamManager` (errors if the team is unknown, archived, or managerless). Explicit assignee always wins; the resolver is never consulted.
+- `addComment`, `listComments`, `latestResult`, `commentCounts` delegate to the injected `CommentStore`. Mutating paths emit events via the injected `EventStore`. All injected ports are optional — tests can omit them.
+
+### Team manager (routing default, not authority)
+
+`TeamDefinitionSchema.manager` (optional, must be a member, validated in `team-store.upsert`; vacant seat = key absent, not `manager: null`). It does three things only: team-addressed `task_create` lands on the manager for triage; members' prompts show `Manager: <id>` in the Teams section; the manager's own prompt gets a triage-duty paragraph (claim / reassign via `task_update` / split — decide, don't relay). No charter/membership powers, no new tools. `updateTeam` auto-vacates the seat when a members update drops the manager, and rejects `archived: true` while open team-tagged tasks exist (archiving revokes workspace writes — live work would strand).
 
 ### Agent-driven task selection
 
-The scheduler is the **wake mechanism**, not the dispatcher. `runAutonomous({sessionId})` (no `taskId`) brings the agent to life with full queue + recent-activity context in the prompt; the agent picks what to work on and calls `task_update(in_progress)` itself when claiming. Failure attribution is post-hoc: on `AutonomousTurnTimeout` or generic error, the scheduler reads "which task in this session is `in_progress`" and parks *that* one as `blocked` with a `system:scheduler` comment.
+The dispatcher is the **wake mechanism**, not a work-picker. `runAutonomous({sessionId})` brings the agent to life with queue + recent-activity context; the agent picks what to work on and calls `task_update(in_progress)` itself when claiming. Failure attribution is post-hoc: on `AutonomousTurnTimeout` or generic error, the dispatcher parks the in-progress task with `start_at = now + 5min` backoff and a `system:scheduler` comment.
 
-### Wake policy (event-driven)
+### Wake policy (tick-based dispatcher + per-agent inbox)
 
-`TaskScheduler` (`packages/server/src/task-scheduler.ts`) is **pure event-driven** — no periodic tick. All runtime wakes flow through `onEvent`; time-based wakes through croner; everything else through a one-shot `startupSweep`.
+`Dispatcher` (`packages/server/src/dispatcher.ts`) replaced the old event-driven `TaskScheduler`. It is **state-checking, not event-reactive**: a 60s tick (`DEFAULT_TICK_MS`) walks agents/sessions and decides who runs; events don't wake anything directly — they land as **inbox rows** (`InboxStore`, fanned out from `EventStore.onEmit` in AgentManager to the task's assignee + creator) which the next tick observes.
 
-- `start()` runs `sweepStale` (in_progress > 10 min → open), then `startupSweep` once: allocate sessions for any unbound ready tasks the daemon picked up from disk, arm crons for future `start_at`s, and immediately enqueue wakes for sessions that have eligible work.
-- `onEvent(event)` is the **only runtime wake path** — wired to `EventStore.onEmit` in `AgentManager`. Unified for every kind (no hard-eligibility special-casing). For each event: resolve the task, skip terminal status, arm a cron if `start_at` is future, allocate a session inline if unbound, echo-check (`event.actor === session.agentId` AND session existed before this event → drop), then `scheduleWake`.
-- `scheduleWake` debounces 7s to coalesce bursts and floors a 10s gap between successive wakes per session. Rate-limit is a **delay, not a drop** — events that arrive in the floor window fire when it opens. Events arriving DURING a turn set `wakeRequestedDuringTurn` so the wake re-fires after the turn ends.
-- `task_assigned` is emitted with `actor: null` — new work shouldn't be echo-suppressed, otherwise a self-assigned task in the agent's own session never wakes. Creator info is in the payload.
-- `reconcile()` (called via `TaskStore.setOnChange`) covers the few mutations that don't emit events (e.g. a bare `start_at` patch with no status change) — re-arms crons only, no wakes.
-
-### Mid-turn event injection
-
-`Agent.runAutonomous` passes a `prepareStep` callback to `streamText`. Between LLM steps, fresh events for the session (excluding self-authored) get appended as a system message before the next inference call — the agent reacts to events that landed mid-turn without waiting for the next wake. Capped at 5 injections per turn to bound runaway loops.
+- `start()` runs a one-shot `startupSweep` (stale in_progress recovery, session allocation for unbound ready tasks), then ticks.
+- `shouldSpawn(session)`: pending inbox rows → spawn; otherwise ready tasks (open, start_at due, deps satisfied — read-time predicates) → spawn. One turn per agent at a time (chain guard).
+- Wake latency is bounded by the tick: up to ~60s from task creation to the assignee's turn starting.
+- Inbox rows drained at turn start render as wake text; rows arriving **mid-turn** inject via `prepareStep` as structured `<system-event>` lines (event kind + JSON payload — never other agents' free prose), capped at 5 injections per turn.
 
 ### Editing the task model
 
 - New frontmatter field: add to `TaskFrontmatterSchema` + `TaskCreate` / `TaskUpdate` + `TaskCreateInputSchema` / `TaskUpdateInputSchema` (write-boundary guards). Don't skip the second pair — `update()` would happily persist garbage.
-- New status: extend `TASK_STATUSES`, then audit `computeAutoStatus`, the closing branches in `update()`, and the recurring-task self-reset.
+- New status: extend `TASK_STATUSES`, then audit the closing branches in `update()` and the recurring-task self-reset.
 - New recurrence kind: extend the discriminated union in both `types.ts` and the tool params in `builtins/tasks.ts`; add a branch in `computeNextFire` + `validateRecurrence`.
 - New comment kind: add to the tool's Zod enum (currently only `result` is exposed; `system` is reserved and rejected by both the tool and HTTP routes).
 - New event kind: add to the `EventKind` union in `packages/tasks/src/ports.ts`, emit at the appropriate site in `TaskStore`, and add a `summarizeEventPayload` branch so the prompt's `## Recent activity` section formats it.
-
-### `task-scheduler.ts` test coverage
-
-Lives at `packages/server/test/task-scheduler.test.ts` (real DB + temp filesystem + mock AgentManager). Covers wake-only behavior, on-timeout park with `system:scheduler` comments, lazy session allocation, dep-blocking, wake policy (echo suppression, debounce, hard-eligibility bypass), recurring self-reset, and agent-missing handling. Add tests for any path you touch — the scheduler is still the most state-dense file in the repo.
 
 ---
 
@@ -490,7 +486,7 @@ Manual via Changesets — see `CONTRIBUTING.md`. Workflow `.github/workflows/rel
 | Persist a new field | `packages/db/src/schema.ts` + `pnpm db:generate` + the relevant store |
 | Add config | `packages/config/src/schema.ts` |
 | Change task state model / recurrence | `packages/tasks/src/{store,recurrence,types}.ts` |
-| Change autonomous wake / scheduling | `packages/server/src/task-scheduler.ts` (+ `Agent.runAutonomous` in `packages/agent-core/src/agent.ts`) |
+| Change autonomous wake / scheduling | `packages/server/src/dispatcher.ts` (+ `Agent.runAutonomous` in `packages/agent-core/src/agent.ts`) |
 | Add a task tool | `packages/tools/src/builtins/tasks.ts` — register, add to `SYSTEM_TOOLS` in `packages/tools/src/system.ts` |
 | Add a browser tool | `packages/tools/src/builtins/browser/` + `BrowserManager` in `packages/browser/src/manager.ts` |
 | Add a browser provider | new file in `packages/browser/src/providers/<name>.ts` implementing `BrowserProvider`; add to `PROVIDER_NAMES` + switch case in `providers/index.ts`; add to `BrowserConfigSchema.provider` enum in `packages/config/src/schema.ts` |

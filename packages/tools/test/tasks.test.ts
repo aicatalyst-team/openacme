@@ -51,6 +51,31 @@ describe("task_create", () => {
     expect(task.assignee).toBe("me");
   });
 
+  it("team-addressed creation resolves assignee to the team manager", async () => {
+    const routed = new TaskStore(dir, {
+      resolveTeamManager: (teamId) =>
+        teamId === "website" ? "zoe-manager" : null,
+    });
+    bindTaskStore({ store: routed });
+    const r = await call(
+      "task_create",
+      { title: "Who should do this?", team: "website" },
+      { agentId: "founder-agent" }
+    );
+    expect(r.ok).toBe(true);
+    const task = (r as { task: { assignee: string; team: string } }).task;
+    expect(task.assignee).toBe("zoe-manager");
+    expect(task.team).toBe("website");
+
+    const miss = await call(
+      "task_create",
+      { title: "Nobody home", team: "growth" },
+      { agentId: "founder-agent" }
+    );
+    expect(miss.ok).toBe(false);
+    expect(String(miss.error)).toMatch(/has no manager/);
+  });
+
   it("requires an agent context", async () => {
     const r = await call("task_create", {
       title: "x",

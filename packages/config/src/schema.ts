@@ -320,6 +320,9 @@ export const TeamDefinitionSchema = z.object({
   // Optional + truthy semantics (same idiom as AgentDefinition.managed)
   // so hand-authored TEAM.md files don't grow noisy `archived: false`.
   archived: z.boolean().optional(),
+  // Routing default, not authority: a task created with this team and no
+  // explicit assignee lands on the manager for triage. Must be a member.
+  manager: z.string().min(1).nullable().optional(),
   // Markdown body of TEAM.md — the team's shared context, injected into
   // member prompts between AGENTS.md (org) and persona (individual).
   charter: z.string().default(""),

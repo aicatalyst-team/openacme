@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
+import { ManagerBadge } from "./manager-badge";
+import { MemberRowMenu } from "./row-menu";
 import { useHomeStream } from "../lib/useHomeStream";
 import { AgentAvatar } from "@/app/components/ui/agent-avatar";
 import { AgentRef } from "@/app/components/ui/agent-ref";
@@ -27,7 +29,7 @@ const STATUS_TEXT: Record<AgentLiveStatus, string> = {
   idle: "text-ink-soft",
 };
 
-function AddMemberPicker({
+export function AddMemberPicker({
   candidates,
   onAdd,
 }: {
@@ -153,7 +155,19 @@ export function TeamMembersTab({
 
   async function removeMember(agentId: string) {
     const next = team.members.filter((m) => m !== agentId);
-    if (await putTeam(team.id, { members: next })) {
+    // Removing the manager vacates the seat (the server also auto-clears
+    // as a backstop — manager must always be a member).
+    const patch =
+      team.manager === agentId
+        ? { members: next, manager: null }
+        : { members: next };
+    if (await putTeam(team.id, patch)) {
+      onChanged();
+    }
+  }
+
+  async function setManager(agentId: string | null) {
+    if (await putTeam(team.id, { manager: agentId })) {
       onChanged();
     }
   }
@@ -193,11 +207,14 @@ export function TeamMembersTab({
                   className="mt-0.5"
                 />
                 <div className="min-w-0 flex-1">
-                  <AgentRef
-                    id={memberId}
-                    label={agent?.name}
-                    className="text-sm font-medium text-ink"
-                  />
+                  <div className="flex items-center gap-2">
+                    <AgentRef
+                      id={memberId}
+                      label={agent?.name}
+                      className="text-sm font-medium text-ink"
+                    />
+                    {team.manager === memberId && <ManagerBadge />}
+                  </div>
                   {agent?.role && (
                     <div className="truncate text-sm text-ink-soft">
                       {agent.role}
@@ -252,15 +269,14 @@ export function TeamMembersTab({
                     )}
                   </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => void removeMember(memberId)}
-                  aria-label={`Remove ${agent?.name ?? memberId} from team`}
-                  title="Remove from team"
-                  className="flex shrink-0 items-center justify-center p-1 text-ink-faint opacity-0 transition-opacity hover:text-plot-red focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-60"
-                >
-                  <X className="size-3.5" aria-hidden />
-                </button>
+                <MemberRowMenu
+                  name={agent?.name ?? memberId}
+                  isManager={team.manager === memberId}
+                  onToggleManager={() =>
+                    void setManager(team.manager === memberId ? null : memberId)
+                  }
+                  onRemove={() => void removeMember(memberId)}
+                />
               </div>
             );
           })}

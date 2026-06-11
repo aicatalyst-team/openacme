@@ -135,10 +135,11 @@ const TASKS_GUIDANCE =
   "Comments on a shared task are the coordination channel.\n" +
   "Teams: tag tasks with `team: \"<team-id>\"` when the work belongs to one of " +
   "your teams; deliverables for team-tagged work go in that team's shared " +
-  "workspace. The tag is organizational only — assignment and wake-up still run " +
-  "on `assignee`. To split team work across members, decompose it: `task_create` " +
-  "per piece with `depends_on` wiring the order (if your team's charter names a " +
-  "coordinator or manager, route new team work to them as a task).\n" +
+  "workspace. With an explicit `assignee` the tag is organizational only. If you " +
+  "don't know who in a team should do the work, set `team` and omit `assignee` — " +
+  "the task lands on the team's manager to triage (errors if the team has no " +
+  "manager). To split team work across members, decompose it: `task_create` " +
+  "per piece with `depends_on` wiring the order.\n" +
   "Recurring tasks: pass `recurrence` (cron or interval). When you mark a recurring " +
   "task `done`, the store self-resets it to `open` with the next fire time — the " +
   "returned status is `open`, not `done`, and `runs` increments. This is intentional. " +
@@ -218,6 +219,12 @@ export interface PromptTeam {
   id: string;
   name: string;
   members: ReadonlyArray<string>;
+  /** Agent id of the team's manager (routing default for team-addressed
+   *  tasks), when one is set. */
+  manager?: string | null;
+  /** True when the agent whose prompt this is holds the manager seat —
+   *  computed by the caller; prompt assembly doesn't know agent ids. */
+  isManager?: boolean;
   charter: string;
   workspaceDir: string;
 }
@@ -237,6 +244,7 @@ function buildTeamsSection(teams: ReadonlyArray<PromptTeam>): string {
     const lines = [
       `### ${team.name} (\`${team.id}\`)`,
       `Members: ${team.members.join(", ")}`,
+      ...(team.manager ? [`Manager: ${team.manager}`] : []),
       `Shared workspace: \`${team.workspaceDir}\``,
     ];
     const charter = team.charter.trim();
@@ -253,6 +261,17 @@ function buildTeamsSection(teams: ReadonlyArray<PromptTeam>): string {
         lines.push("", "(charter omitted)");
         truncated = true;
       }
+    }
+    if (team.isManager) {
+      lines.push(
+        "",
+        `You are this team's manager. Tasks addressed to the team without ` +
+          `an assignee land on you to triage: claim it, reassign it to the ` +
+          `right member via task_update, or split it into subtasks — decide, ` +
+          `don't relay. Escalate to the human only when the team can't ` +
+          `resolve it. Being manager grants no authority over teammates; ` +
+          `it's a routing duty.`
+      );
     }
     parts.push(lines.join("\n"));
   }

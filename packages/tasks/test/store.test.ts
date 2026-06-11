@@ -216,6 +216,57 @@ describe("TaskStore team tag", () => {
   });
 });
 
+describe("TaskStore team-manager resolution", () => {
+  const resolver = (teamId: string) =>
+    teamId === "website" ? "zoe-manager" : null;
+
+  it("team + no assignee resolves to the team's manager", async () => {
+    const s = new TaskStore(dir, { resolveTeamManager: resolver });
+    const t = await s.create({
+      title: "Triage me",
+      created_by: "founder-agent",
+      team: "website",
+    });
+    expect(t.assignee).toBe("zoe-manager");
+    expect(t.team).toBe("website");
+    // Stored task carries the concrete assignee on disk.
+    expect(new TaskStore(dir).get(t.id)?.assignee).toBe("zoe-manager");
+  });
+
+  it("explicit assignee wins — resolver not consulted", async () => {
+    const spy = vi.fn(resolver);
+    const s = new TaskStore(dir, { resolveTeamManager: spy });
+    const t = await s.create({
+      title: "Direct",
+      assignee: "max",
+      created_by: "founder-agent",
+      team: "website",
+    });
+    expect(t.assignee).toBe("max");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("team without a manager (or unknown team) rejects with a clear error", async () => {
+    const s = new TaskStore(dir, { resolveTeamManager: resolver });
+    await expect(
+      s.create({ title: "Orphan", created_by: "x", team: "growth" })
+    ).rejects.toThrow(/has no manager/);
+  });
+
+  it("no assignee and no team rejects with an actionable error", async () => {
+    const s = new TaskStore(dir, { resolveTeamManager: resolver });
+    await expect(
+      s.create({ title: "Nowhere", created_by: "x" })
+    ).rejects.toThrow(/assignee is required/);
+  });
+
+  it("store without a resolver rejects team-addressed creation", async () => {
+    await expect(
+      store.create({ title: "No resolver", created_by: "x", team: "website" })
+    ).rejects.toThrow(/has no manager/);
+  });
+});
+
 describe("TaskStore dependencies", () => {
   it("stores the caller's status verbatim — deps don't auto-flip", async () => {
     // Pre-refactor the store auto-flipped to `blocked` on unmet deps

@@ -93,6 +93,9 @@ function serializeTeam(team: TeamDefinition): string {
   // Charter goes in the body; the id is the folder name.
   const { charter, id: _id, ...frontmatter } = stripUndefined(team);
   void _id;
+  // No-manager is the absence of the key, not `manager: null` — keeps
+  // hand-authored TEAM.md files clean (same idiom as `archived`).
+  if (frontmatter.manager == null) delete frontmatter.manager;
   return matter.stringify(charter ? `${charter}\n` : "\n", frontmatter);
 }
 
@@ -129,6 +132,11 @@ export function createTeamStore(teamsDir: string): TeamStore {
             `Invalid member id ${JSON.stringify(member)} in team '${validated.id}'`
           );
         }
+      }
+      if (validated.manager && !validated.members.includes(validated.manager)) {
+        throw new Error(
+          `Manager '${validated.manager}' must be a member of team '${validated.id}'`
+        );
       }
       const folder = teamFolder(teamsDir, validated.id);
       const filePath = path.join(folder, TEAM_FILE);

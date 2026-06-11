@@ -197,6 +197,9 @@ registry.register({
 
 const TASK_CREATE_DESCRIPTION =
   "Create a task. The current agent is recorded as `created_by`.\n\n" +
+  "Don't know who should do the work? If the task belongs to a team, set " +
+  "`team` and omit `assignee` — it lands on the team's manager to triage " +
+  "(fails if the team has no manager).\n\n" +
   "`session` (where the work lives):\n" +
   "- `\"current\"` — bind to YOUR current session. Only valid when assignee == you; otherwise rejected.\n" +
   "- `\"fresh\"` — explicitly request a brand-new session. The scheduler allocates one when the task becomes ready.\n" +
@@ -221,7 +224,12 @@ registry.register({
     assignee: z
       .string()
       .min(1)
-      .describe("Agent id to do the work. Required — no unassigned tasks."),
+      .optional()
+      .describe(
+        "Agent id to do the work. Omittable only when `team` is set and " +
+          "that team has a manager — the task then lands on the manager " +
+          "for triage. Otherwise required."
+      ),
     body: z
       .string()
       .optional()
@@ -265,7 +273,8 @@ registry.register({
       .optional()
       .describe(
         "Team tag (team id) when the work belongs to a team's charter. " +
-          "Organizational only — assignment and wake-up still run on `assignee`."
+          "With an explicit `assignee` it's organizational only; without " +
+          "one, the task routes to the team's manager."
       ),
   }),
   emoji: "🆕",
@@ -276,7 +285,7 @@ registry.register({
 
     const a = args as {
       title: string;
-      assignee: string;
+      assignee?: string;
       body?: string;
       parent_id?: string | number;
       depends_on?: (string | number)[];
