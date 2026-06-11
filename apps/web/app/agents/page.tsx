@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import {
-  Bot,
   Plus,
   Trash2,
   Save,
@@ -53,6 +52,21 @@ import {
 } from "@/app/components/ui/select";
 import { SectionEyebrow } from "@/app/components/ui/section-eyebrow";
 import { ActiveMarker } from "@/app/components/ui/active-marker";
+import { AgentAvatar } from "@/app/components/ui/agent-avatar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/app/components/ui/popover";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/app/components/ui/tabs";
+import dynamic from "next/dynamic";
+import type { EmojiClickData } from "emoji-picker-react";
+import { DynamicIcon, iconNames, type IconName } from "lucide-react/dynamic";
 import { cn } from "@/app/lib/utils";
 import { Markdown } from "@/app/components/Markdown";
 import { AgentResourcesPanel } from "@/app/components/AgentResourcesPanel";
@@ -62,6 +76,7 @@ type CacheTtl = "5m" | "1h";
 interface Agent {
   id: string;
   name: string;
+  avatar?: string;
   role: string;
   model: {
     provider: string;
@@ -96,6 +111,7 @@ interface CatalogTemplate {
   meta: CatalogTemplateMeta;
   agentFields: {
     name: string;
+    avatar?: string;
     role?: string;
     persona: string;
     tools: string[];
@@ -130,6 +146,7 @@ interface CatalogPreview {
 interface FormState {
   id: string;
   name: string;
+  avatar: string;
   role: string;
   provider: string;
   model: string;
@@ -147,6 +164,7 @@ const CUSTOM_MODEL = "__custom__";
 const FALLBACK_FORM: FormState = {
   id: "",
   name: "",
+  avatar: "",
   role: "",
   provider: "openrouter",
   model: "",
@@ -158,6 +176,134 @@ const FALLBACK_FORM: FormState = {
   mcpServers: {},
   mcpDisabled: [],
 };
+
+// Lazy: emoji data is sizeable and only needed once the picker opens.
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), {
+  ssr: false,
+  loading: () => (
+    <div className="p-6 text-center font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
+      Loading&hellip;
+    </div>
+  ),
+});
+
+// Default icon-tab view before the user searches the full set.
+const POPULAR_ICONS = [
+  "bot",
+  "wrench",
+  "hammer",
+  "code",
+  "terminal",
+  "palette",
+  "pen-line",
+  "chart-column",
+  "search",
+  "book-open",
+  "scale",
+  "flask-conical",
+  "briefcase",
+  "megaphone",
+  "shield",
+  "globe",
+  "brain",
+  "cog",
+  "rocket",
+  "lightbulb",
+  "database",
+  "mail",
+  "calendar",
+  "users",
+].filter((n): n is IconName => (iconNames as readonly string[]).includes(n));
+
+/** Avatar input with an emoji picker + searchable lucide icon picker.
+ *  Free-text stays available for anything the pickers don't cover. */
+function AvatarField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [iconQuery, setIconQuery] = useState("");
+  const pick = (v: string) => {
+    onChange(v);
+    setOpen(false);
+  };
+  const q = iconQuery.trim().toLowerCase();
+  const shownIcons = q
+    ? iconNames.filter((n) => n.includes(q)).slice(0, 64)
+    : POPULAR_ICONS;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          id="avatar"
+          aria-label="Pick avatar"
+          className="flex size-9 shrink-0 items-center justify-center border border-paper-rule bg-paper transition-colors hover:border-plot-red"
+        >
+          <AgentAvatar
+            avatar={value.trim() || undefined}
+            size="lg"
+            className="text-ink-soft"
+          />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        className="w-[324px] overflow-hidden p-0"
+      >
+        <Tabs defaultValue="emoji">
+          <TabsList className="h-9 w-full border-b border-paper-rule pl-2">
+            <TabsTrigger value="emoji">Emoji</TabsTrigger>
+            <TabsTrigger value="icons">Icons</TabsTrigger>
+          </TabsList>
+          <TabsContent value="emoji" className="avatar-emoji-picker mt-0">
+            <EmojiPicker
+              onEmojiClick={(d: EmojiClickData) => pick(d.emoji)}
+              width="100%"
+              height={320}
+              previewConfig={{ showPreview: false }}
+              skinTonesDisabled
+              lazyLoadEmojis
+            />
+          </TabsContent>
+          <TabsContent value="icons" className="mt-0 p-3">
+            <input
+              type="text"
+              value={iconQuery}
+              onChange={(e) => setIconQuery(e.target.value)}
+              placeholder="Search icons…"
+              className="mb-2 w-full border border-paper-rule bg-paper px-2 py-1 text-[12px] text-ink outline-none placeholder:text-ink-faint focus:border-plot-red"
+            />
+            <div className="grid max-h-56 grid-cols-8 gap-1 overflow-y-auto">
+              {shownIcons.length === 0 ? (
+                <p className="col-span-8 py-4 text-center font-mono text-[11px] text-ink-faint">
+                  No icons match.
+                </p>
+              ) : (
+                shownIcons.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    title={name}
+                    aria-label={name}
+                    onClick={() => pick(`icon:${name}`)}
+                    className="flex size-8 items-center justify-center text-ink-soft transition-colors hover:bg-paper-sunk hover:text-ink"
+                  >
+                    <DynamicIcon name={name} className="size-4" aria-hidden />
+                  </button>
+                ))
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function AgentsPage() {
   return (
@@ -177,7 +323,9 @@ function AgentsPageInner() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [globalMcp, setGlobalMcp] = useState<Record<string, MCPServerConfigDto>>({});
+  const [globalMcp, setGlobalMcp] = useState<
+    Record<string, MCPServerConfigDto>
+  >({});
   const [allSkills, setAllSkills] = useState<SkillIndexEntry[]>([]);
 
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -192,9 +340,7 @@ function AgentsPageInner() {
   // can't race against the user's in-flight selections and reset the form.
   const importHydratedFor = useRef<string | null>(null);
   const [mcpDialog, setMcpDialog] = useState<
-    | { mode: "add" }
-    | { mode: "edit"; initial: MCPServerFormValue }
-    | null
+    { mode: "add" } | { mode: "edit"; initial: MCPServerFormValue } | null
   >(null);
 
   // Catalog state — bundled agent templates the user can import. Two-step
@@ -203,11 +349,17 @@ function AgentsPageInner() {
   const [creationModal, setCreationModal] = useState<
     "closed" | "choose" | "catalog"
   >("closed");
-  const [catalogTemplates, setCatalogTemplates] = useState<CatalogTemplateMeta[]>([]);
+  const [catalogTemplates, setCatalogTemplates] = useState<
+    CatalogTemplateMeta[]
+  >([]);
   // Set when in import mode (?import=<id>): the full template + the preview
   // diff so the form can prefill values + render the "will install" summary.
-  const [importTemplate, setImportTemplate] = useState<CatalogTemplate | null>(null);
-  const [importPreview, setImportPreview] = useState<CatalogPreview | null>(null);
+  const [importTemplate, setImportTemplate] = useState<CatalogTemplate | null>(
+    null,
+  );
+  const [importPreview, setImportPreview] = useState<CatalogPreview | null>(
+    null,
+  );
 
   // ── Loaders ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -245,9 +397,7 @@ function AgentsPageInner() {
         setAllSkills((await skillsRes.json()) as SkillIndexEntry[]);
       }
       if (catalogRes.ok) {
-        setCatalogTemplates(
-          (await catalogRes.json()) as CatalogTemplateMeta[]
-        );
+        setCatalogTemplates((await catalogRes.json()) as CatalogTemplateMeta[]);
       }
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
@@ -269,7 +419,7 @@ function AgentsPageInner() {
   // ── Derived ──────────────────────────────────────────────────────────────
   const currentProvider = useMemo(
     () => providers.find((p) => p.id === formData.provider),
-    [providers, formData.provider]
+    [providers, formData.provider],
   );
 
   const presets: ModelPreset[] = currentProvider?.models ?? [];
@@ -310,7 +460,7 @@ function AgentsPageInner() {
     setFormData((prev) => ({
       ...prev,
       provider,
-      model: stillValid ? prev.model : newPresets[0]?.id ?? "",
+      model: stillValid ? prev.model : (newPresets[0]?.id ?? ""),
       auth: prev.auth === "oauth" && !supportsOAuth ? "api_key" : prev.auth,
     }));
     setIsCustomModel(stillValid ? isCustomModel : newPresets.length === 0);
@@ -344,6 +494,7 @@ function AgentsPageInner() {
 
   const buildAgentBody = () => ({
     name: formData.name,
+    avatar: formData.avatar.trim() || undefined,
     role: formData.role,
     model: {
       provider: formData.provider,
@@ -382,7 +533,7 @@ function AgentsPageInner() {
     if (Object.prototype.hasOwnProperty.call(globalMcp, value.name)) {
       toast.error(
         `'${value.name}' is already a global server. ` +
-          `Edit it in Settings → MCP, or pick a different name for the agent-private server.`
+          `Edit it in Settings → MCP, or pick a different name for the agent-private server.`,
       );
       return;
     }
@@ -402,8 +553,13 @@ function AgentsPageInner() {
   };
 
   const handleMcpTest = async (
-    value: MCPServerFormValue
-  ): Promise<{ ok: boolean; error?: string; tools?: string[]; transport?: string }> => {
+    value: MCPServerFormValue,
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    tools?: string[];
+    transport?: string;
+  }> => {
     const res = await fetch(`${API_BASE}/api/mcp/test`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -431,7 +587,7 @@ function AgentsPageInner() {
               nameOverride: formData.name || undefined,
               overrides: buildAgentBody(),
             }),
-          }
+          },
         );
         if (!res.ok) {
           const data = await res.json();
@@ -441,7 +597,10 @@ function AgentsPageInner() {
         const out = (await res.json()) as {
           agent: Agent;
           manifest: {
-            agent: { id: string; resourceFiles: Array<{ relPath: string; size: number }> };
+            agent: {
+              id: string;
+              resourceFiles: Array<{ relPath: string; size: number }>;
+            };
             workforce: {
               skills: Array<
                 | { name: string; action: "installed" | "kept" }
@@ -452,13 +611,13 @@ function AgentsPageInner() {
           };
         };
         const installed = out.manifest.workforce.skills.filter(
-          (s) => s.action === "installed"
+          (s) => s.action === "installed",
         ).length;
         const failedSkills = out.manifest.workforce.skills.filter(
-          (s) => s.action === "failed"
+          (s) => s.action === "failed",
         );
         const added = out.manifest.workforce.mcpServers.filter(
-          (m) => m.action === "added"
+          (m) => m.action === "added",
         ).length;
         toast.success(`Imported ${out.agent.name} as ${out.agent.id}`, {
           description: [
@@ -472,7 +631,7 @@ function AgentsPageInner() {
         if (failedSkills.length > 0) {
           toast.error(
             `${failedSkills.length} recommended skill(s) failed to install`,
-            { description: failedSkills.map((s) => s.name).join(", ") }
+            { description: failedSkills.map((s) => s.name).join(", ") },
           );
         }
         await reloadAgents();
@@ -539,14 +698,16 @@ function AgentsPageInner() {
     // Restore form to the saved agent's state so re-opening the editor
     // doesn't surface in-progress edits the user said "cancel" to.
     const provPresets =
-      providers.find((p) => p.id === selectedAgent.model.provider)?.models ?? [];
+      providers.find((p) => p.id === selectedAgent.model.provider)?.models ??
+      [];
     const matchedPreset = provPresets.some(
-      (m) => m.id === selectedAgent.model.model
+      (m) => m.id === selectedAgent.model.model,
     );
     setIsCustomModel(!matchedPreset);
     setFormData({
       id: selectedAgent.id,
       name: selectedAgent.name,
+      avatar: selectedAgent.avatar ?? "",
       role: selectedAgent.role ?? "",
       provider: selectedAgent.model.provider,
       model: selectedAgent.model.model,
@@ -563,7 +724,9 @@ function AgentsPageInner() {
   const handleDelete = async (id: string) => {
     setConfirmDelete(null);
     try {
-      const res = await fetch(`${API_BASE}/api/agents/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/agents/${id}`, {
+        method: "DELETE",
+      });
       if (res.ok) {
         toast.success("Agent deleted");
         await reloadAgents();
@@ -608,10 +771,10 @@ function AgentsPageInner() {
         try {
           const [tplRes, prevRes] = await Promise.all([
             fetch(
-              `${API_BASE}/api/agents/catalog/${encodeURIComponent(urlImportTemplate)}`
+              `${API_BASE}/api/agents/catalog/${encodeURIComponent(urlImportTemplate)}`,
             ),
             fetch(
-              `${API_BASE}/api/agents/catalog/${encodeURIComponent(urlImportTemplate)}/preview`
+              `${API_BASE}/api/agents/catalog/${encodeURIComponent(urlImportTemplate)}/preview`,
             ),
           ]);
           if (!tplRes.ok || !prevRes.ok) {
@@ -637,6 +800,7 @@ function AgentsPageInner() {
           setFormData({
             id: prev.assignedId,
             name: tpl.agentFields.name,
+            avatar: tpl.agentFields.avatar ?? "",
             role: tpl.agentFields.role ?? "",
             provider,
             model,
@@ -652,7 +816,7 @@ function AgentsPageInner() {
             mcpDisabled: tpl.agentFields.mcpDisabled ?? [],
           });
           setIsCustomModel(
-            model !== "" && !provPresets.some((m) => m.id === model)
+            model !== "" && !provPresets.some((m) => m.id === model),
           );
         } catch {
           toast.error("Failed to load template");
@@ -690,7 +854,7 @@ function AgentsPageInner() {
         const provPresets =
           providers.find((p) => p.id === found.model.provider)?.models ?? [];
         const matchedPreset = provPresets.some(
-          (m) => m.id === found.model.model
+          (m) => m.id === found.model.model,
         );
         setSelectedAgent(found);
         setIsCreating(false);
@@ -701,6 +865,7 @@ function AgentsPageInner() {
         setFormData({
           id: found.id,
           name: found.name,
+          avatar: found.avatar ?? "",
           role: found.role ?? "",
           provider: found.model.provider,
           model: found.model.model,
@@ -780,7 +945,7 @@ function AgentsPageInner() {
               "shrink-0 overflow-y-auto border-paper-rule md:w-72 md:border-r",
               selectedAgent || isCreating
                 ? "hidden md:block"
-                : "block border-b md:border-b-0"
+                : "block border-b md:border-b-0",
             )}
           >
             {agents.length === 0 && (
@@ -798,11 +963,15 @@ function AgentsPageInner() {
                     "group relative flex w-full items-start gap-3 border-b border-paper-rule/40 px-4 py-3 text-left transition-colors last:border-b-0",
                     isActive
                       ? "bg-paper-sunk text-ink"
-                      : "text-ink-soft hover:bg-paper-sunk hover:text-ink"
+                      : "text-ink-soft hover:bg-paper-sunk hover:text-ink",
                   )}
                 >
                   <ActiveMarker active={isActive} />
-                  <Bot className="size-4 shrink-0 mt-0.5 text-ink-soft" />
+                  <AgentAvatar
+                    avatar={agent.avatar}
+                    size="lg"
+                    className="mt-0.5 text-ink-soft"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-ink">
                       {agent.name}
@@ -831,7 +1000,7 @@ function AgentsPageInner() {
           <div
             className={cn(
               "flex-1 overflow-y-auto p-4 md:p-6",
-              !selectedAgent && !isCreating ? "hidden md:block" : ""
+              !selectedAgent && !isCreating ? "hidden md:block" : "",
             )}
           >
             {(selectedAgent || isCreating) && (
@@ -876,17 +1045,17 @@ function AgentsPageInner() {
                     preview={importPreview}
                   />
                 )}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>
-                      {urlImportTemplate
-                        ? `Import: ${importTemplate?.agentFields.name ?? urlImportTemplate}`
-                        : isCreating
-                          ? "Create agent"
-                          : "Edit agent"}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
+                <div className="border-b border-paper-rule pb-4">
+                  <CardTitle className="text-xl">
+                    {urlImportTemplate
+                      ? `Import: ${importTemplate?.agentFields.name ?? urlImportTemplate}`
+                      : isCreating
+                        ? "Create agent"
+                        : "Edit agent"}
+                  </CardTitle>
+                </div>
+                <div className="space-y-5 pt-2">
+                  <div className="grid grid-cols-[1fr_auto] gap-5">
                     <div className="grid gap-2">
                       <Label htmlFor="name">Name</Label>
                       <Input
@@ -899,260 +1068,268 @@ function AgentsPageInner() {
                         required
                       />
                     </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="avatar">Avatar</Label>
+                      <AvatarField
+                        value={formData.avatar}
+                        onChange={(v) =>
+                          setFormData({ ...formData, avatar: v })
+                        }
+                      />
+                    </div>
+                  </div>
 
-                    {isCreating && (
-                      <div className="grid gap-2">
-                        <Label htmlFor="id">ID (optional)</Label>
-                        <Input
-                          id="id"
-                          value={formData.id}
-                          onChange={(e) =>
-                            setFormData({ ...formData, id: e.target.value })
-                          }
-                          placeholder="my-agent (auto-generated from name)"
-                        />
-                      </div>
-                    )}
+                  {isCreating && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="id">ID (optional)</Label>
+                      <Input
+                        id="id"
+                        value={formData.id}
+                        onChange={(e) =>
+                          setFormData({ ...formData, id: e.target.value })
+                        }
+                        placeholder="my-agent (auto-generated from name)"
+                      />
+                    </div>
+                  )}
 
-                    <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                      <div className="grid gap-2">
-                        <Label htmlFor="provider">Provider</Label>
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor="provider">Provider</Label>
+                      <Select
+                        value={formData.provider}
+                        onValueChange={onProviderChange}
+                      >
+                        <SelectTrigger id="provider">
+                          <SelectValue placeholder="Select a provider" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {providers.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="model">Model</Label>
+                      {presets.length > 0 ? (
                         <Select
-                          value={formData.provider}
-                          onValueChange={onProviderChange}
+                          value={modelSelectValue}
+                          onValueChange={onModelSelect}
                         >
-                          <SelectTrigger id="provider">
-                            <SelectValue placeholder="Select a provider" />
+                          <SelectTrigger id="model">
+                            <SelectValue placeholder="Select a model" />
                           </SelectTrigger>
                           <SelectContent>
-                            {providers.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name}
+                            {presets.map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                <div className="flex flex-col items-start">
+                                  <span>{m.label}</span>
+                                  {m.hint && (
+                                    <span className="text-[10px] text-ink-soft">
+                                      {m.hint}
+                                    </span>
+                                  )}
+                                </div>
                               </SelectItem>
                             ))}
+                            <SelectItem value={CUSTOM_MODEL}>
+                              <span className="text-ink-soft">
+                                Custom model id…
+                              </span>
+                            </SelectItem>
                           </SelectContent>
                         </Select>
-                      </div>
-
-                      <div className="grid gap-2">
-                        <Label htmlFor="model">Model</Label>
-                        {presets.length > 0 ? (
-                          <Select
-                            value={modelSelectValue}
-                            onValueChange={onModelSelect}
-                          >
-                            <SelectTrigger id="model">
-                              <SelectValue placeholder="Select a model" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {presets.map((m) => (
-                                <SelectItem key={m.id} value={m.id}>
-                                  <div className="flex flex-col items-start">
-                                    <span>{m.label}</span>
-                                    {m.hint && (
-                                      <span className="text-[10px] text-ink-soft">
-                                        {m.hint}
-                                      </span>
-                                    )}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                              <SelectItem value={CUSTOM_MODEL}>
-                                <span className="text-ink-soft">
-                                  Custom model id…
-                                </span>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        ) : null}
-                        {(isCustomModel || presets.length === 0) && (
-                          <Input
-                            id={presets.length === 0 ? "model" : "model-custom"}
-                            value={formData.model}
-                            onChange={(e) =>
-                              setFormData({ ...formData, model: e.target.value })
-                            }
-                            placeholder="Enter model id"
-                            className="font-mono text-xs"
-                            required
-                          />
-                        )}
-                      </div>
-
-                      {/* Authentication — OAuth hidden when the selected
-                          provider doesn't support it. "Set it up" link goes
-                          to Settings where the actual sign-in lives. */}
-                      {(() => {
-                        const p = providers.find(
-                          (x) => x.id === formData.provider
-                        );
-                        if (!p) return null;
-                        const supportsOAuth = p.supportsOAuth === true;
-                        const apiKeyConfigured = p.apiKeyConfigured === true;
-                        const oauthConfigured = p.oauthConfigured === true;
-                        const groupId = `agent-auth-${formData.id || "new"}`;
-                        return (
-                          <div className="grid gap-2 md:col-span-2">
-                            <Label>Authentication</Label>
-                            <RadioGroup
-                              value={formData.auth}
-                              onValueChange={(v) =>
-                                setFormData({
-                                  ...formData,
-                                  auth: v as "api_key" | "oauth",
-                                })
-                              }
-                            >
-                              <label
-                                htmlFor={`${groupId}-api_key`}
-                                className="flex items-start gap-2 text-sm cursor-pointer"
-                              >
-                                <RadioGroupItem
-                                  value="api_key"
-                                  id={`${groupId}-api_key`}
-                                  className="mt-1"
-                                />
-                                <span className="flex-1">
-                                  <span>API key</span>
-                                  <span className="ml-2 font-mono text-[11px] text-ink-faint">
-                                    {apiKeyConfigured
-                                      ? "configured"
-                                      : p.envVar
-                                        ? `not configured (set ${p.envVar})`
-                                        : "no key needed"}
-                                  </span>
-                                </span>
-                              </label>
-                              {supportsOAuth && (
-                                <label
-                                  htmlFor={`${groupId}-oauth`}
-                                  className="flex items-start gap-2 text-sm cursor-pointer"
-                                >
-                                  <RadioGroupItem
-                                    value="oauth"
-                                    id={`${groupId}-oauth`}
-                                    className="mt-1"
-                                  />
-                                  <span className="flex-1">
-                                    <span>OAuth subscription</span>
-                                    <span className="ml-2 font-mono text-[11px] text-ink-faint">
-                                      {oauthConfigured
-                                        ? "signed in"
-                                        : "not signed in"}
-                                    </span>
-                                    {!oauthConfigured && (
-                                      <a
-                                        href="/settings"
-                                        className="ml-2 text-[11px] text-plot-red underline hover:no-underline"
-                                      >
-                                        Set up in Settings
-                                      </a>
-                                    )}
-                                  </span>
-                                </label>
-                              )}
-                            </RadioGroup>
-                          </div>
-                        );
-                      })()}
-
-                      {isClaudeModel && (
-                        <div className="grid gap-2 md:col-span-2">
-                          <Label htmlFor="cacheTtl">Prompt cache TTL</Label>
-                          <Select
-                            value={formData.cacheTtl}
-                            onValueChange={(v) =>
-                              setFormData({
-                                ...formData,
-                                cacheTtl: v as CacheTtl,
-                              })
-                            }
-                          >
-                            <SelectTrigger
-                              id="cacheTtl"
-                              className="md:max-w-xs"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="5m">5 minutes (default)</SelectItem>
-                              <SelectItem value="1h">1 hour</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                      ) : null}
+                      {(isCustomModel || presets.length === 0) && (
+                        <Input
+                          id={presets.length === 0 ? "model" : "model-custom"}
+                          value={formData.model}
+                          onChange={(e) =>
+                            setFormData({ ...formData, model: e.target.value })
+                          }
+                          placeholder="Enter model id"
+                          className="font-mono text-xs"
+                          required
+                        />
                       )}
                     </div>
 
-                    <div className="grid gap-2">
-                      <Label htmlFor="role">
-                        Role
-                        <span className="ml-2 font-normal text-ink-faint">
-                          visible to other agents
-                        </span>
-                      </Label>
-                      <Textarea
-                        id="role"
-                        value={formData.role}
-                        onChange={(e) =>
-                          setFormData({ ...formData, role: e.target.value })
-                        }
-                        placeholder="Owns X. Good for Y. Redirects Z to @other-agent."
-                        rows={3}
-                      />
-                    </div>
+                    {/* Authentication — OAuth hidden when the selected
+                          provider doesn't support it. "Set it up" link goes
+                          to Settings where the actual sign-in lives. */}
+                    {(() => {
+                      const p = providers.find(
+                        (x) => x.id === formData.provider,
+                      );
+                      if (!p) return null;
+                      const supportsOAuth = p.supportsOAuth === true;
+                      const apiKeyConfigured = p.apiKeyConfigured === true;
+                      const oauthConfigured = p.oauthConfigured === true;
+                      const groupId = `agent-auth-${formData.id || "new"}`;
+                      return (
+                        <div className="grid gap-2 md:col-span-2">
+                          <Label>Authentication</Label>
+                          <RadioGroup
+                            value={formData.auth}
+                            onValueChange={(v) =>
+                              setFormData({
+                                ...formData,
+                                auth: v as "api_key" | "oauth",
+                              })
+                            }
+                          >
+                            <label
+                              htmlFor={`${groupId}-api_key`}
+                              className="flex items-start gap-2 text-sm cursor-pointer"
+                            >
+                              <RadioGroupItem
+                                value="api_key"
+                                id={`${groupId}-api_key`}
+                                className="mt-1"
+                              />
+                              <span className="flex-1">
+                                <span>API key</span>
+                                <span className="ml-2 font-mono text-[11px] text-ink-faint">
+                                  {apiKeyConfigured
+                                    ? "configured"
+                                    : p.envVar
+                                      ? `not configured (set ${p.envVar})`
+                                      : "no key needed"}
+                                </span>
+                              </span>
+                            </label>
+                            {supportsOAuth && (
+                              <label
+                                htmlFor={`${groupId}-oauth`}
+                                className="flex items-start gap-2 text-sm cursor-pointer"
+                              >
+                                <RadioGroupItem
+                                  value="oauth"
+                                  id={`${groupId}-oauth`}
+                                  className="mt-1"
+                                />
+                                <span className="flex-1">
+                                  <span>OAuth subscription</span>
+                                  <span className="ml-2 font-mono text-[11px] text-ink-faint">
+                                    {oauthConfigured
+                                      ? "signed in"
+                                      : "not signed in"}
+                                  </span>
+                                  {!oauthConfigured && (
+                                    <a
+                                      href="/settings"
+                                      className="ml-2 text-[11px] text-plot-red underline hover:no-underline"
+                                    >
+                                      Set up in Settings
+                                    </a>
+                                  )}
+                                </span>
+                              </label>
+                            )}
+                          </RadioGroup>
+                        </div>
+                      );
+                    })()}
 
-                    <div className="grid gap-2">
-                      <Label htmlFor="persona">Persona</Label>
-                      <Textarea
-                        id="persona"
-                        value={formData.persona}
-                        onChange={(e) =>
-                          setFormData({ ...formData, persona: e.target.value })
-                        }
-                        placeholder="You are a helpful AI assistant."
-                        rows={4}
-                      />
-                    </div>
+                    {isClaudeModel && (
+                      <div className="grid gap-2 md:col-span-2">
+                        <Label htmlFor="cacheTtl">Prompt cache TTL</Label>
+                        <Select
+                          value={formData.cacheTtl}
+                          onValueChange={(v) =>
+                            setFormData({
+                              ...formData,
+                              cacheTtl: v as CacheTtl,
+                            })
+                          }
+                        >
+                          <SelectTrigger id="cacheTtl" className="md:max-w-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="5m">
+                              5 minutes (default)
+                            </SelectItem>
+                            <SelectItem value="1h">1 hour</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
 
-                    <ToolPicker
-                      groups={toolsByToolset}
-                      selected={formData.tools}
-                      onToggle={toggleTool}
-                    />
-
-                    <McpSection
-                      globalServers={globalMcp}
-                      privateServers={formData.mcpServers}
-                      disabled={formData.mcpDisabled}
-                      onToggleInherit={toggleGlobalMcpInherit}
-                      onAdd={() => setMcpDialog({ mode: "add" })}
-                      onEdit={(name, cfg) =>
-                        setMcpDialog({
-                          mode: "edit",
-                          initial: { name, config: cfg },
-                        })
+                  <div className="grid gap-2">
+                    <Label htmlFor="role">
+                      Role
+                      <span className="ml-2 font-normal text-ink-faint">
+                        visible to other agents
+                      </span>
+                    </Label>
+                    <Textarea
+                      id="role"
+                      value={formData.role}
+                      onChange={(e) =>
+                        setFormData({ ...formData, role: e.target.value })
                       }
-                      onRemove={handleMcpRemove}
+                      placeholder="Owns X. Good for Y. Redirects Z to @other-agent."
+                      rows={3}
                     />
+                  </div>
 
-                    {/* The skills picker gates which workforce skills the
+                  <div className="grid gap-2">
+                    <Label htmlFor="persona">Persona</Label>
+                    <Textarea
+                      id="persona"
+                      value={formData.persona}
+                      onChange={(e) =>
+                        setFormData({ ...formData, persona: e.target.value })
+                      }
+                      placeholder="You are a helpful AI assistant."
+                      rows={4}
+                    />
+                  </div>
+
+                  <ToolPicker
+                    groups={toolsByToolset}
+                    selected={formData.tools}
+                    onToggle={toggleTool}
+                  />
+
+                  <McpSection
+                    globalServers={globalMcp}
+                    privateServers={formData.mcpServers}
+                    disabled={formData.mcpDisabled}
+                    onToggleInherit={toggleGlobalMcpInherit}
+                    onAdd={() => setMcpDialog({ mode: "add" })}
+                    onEdit={(name, cfg) =>
+                      setMcpDialog({
+                        mode: "edit",
+                        initial: { name, config: cfg },
+                      })
+                    }
+                    onRemove={handleMcpRemove}
+                  />
+
+                  {/* The skills picker gates which workforce skills the
                         agent sees in its prompt. Hidden during catalog
                         import — bundled skills install workforce-wide and
                         the imported agent's allowlist stays empty (sees
                         all). Visible when editing / creating from scratch. */}
-                    {!urlImportTemplate && (
-                      <SkillsPicker
-                        all={allSkills}
-                        selected={formData.skills}
-                        onToggle={toggleSkill}
-                      />
-                    )}
+                  {!urlImportTemplate && (
+                    <SkillsPicker
+                      all={allSkills}
+                      selected={formData.skills}
+                      onToggle={toggleSkill}
+                    />
+                  )}
 
-                    {selectedAgent && (
-                      <AgentResourcesPanel agentId={selectedAgent.id} />
-                    )}
-                  </CardContent>
-                </Card>
+                  {selectedAgent && (
+                    <AgentResourcesPanel agentId={selectedAgent.id} />
+                  )}
+                </div>
 
                 <div className="mt-4 flex items-center justify-between">
                   <div>
@@ -1206,7 +1383,9 @@ function AgentsPageInner() {
           <DialogHeader>
             <DialogTitle>Delete agent?</DialogTitle>
             <DialogDescription>
-              This will permanently delete the agent <span className="font-mono">{confirmDelete}</span>. This action cannot be undone.
+              This will permanently delete the agent{" "}
+              <span className="font-mono">{confirmDelete}</span>. This action
+              cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -1235,8 +1414,8 @@ function AgentsPageInner() {
                 : "Add agent-private MCP server"}
             </DialogTitle>
             <DialogDescription>
-              Private to this agent only. Names cannot collide with the
-              global catalog in Settings → MCP.
+              Private to this agent only. Names cannot collide with the global
+              catalog in Settings → MCP.
             </DialogDescription>
           </DialogHeader>
           {mcpDialog && (
@@ -1293,7 +1472,8 @@ function AgentsPageInner() {
                           </span>
                         </div>
                         <p className="mt-1 text-xs text-ink-soft">
-                          Empty form. Pick a name, model, persona, and tools yourself.
+                          Empty form. Pick a name, model, persona, and tools
+                          yourself.
                         </p>
                       </div>
                     </button>
@@ -1315,8 +1495,8 @@ function AgentsPageInner() {
                           </span>
                         </div>
                         <p className="mt-1 text-xs text-ink-soft">
-                          Bundled templates ship with the platform. Auto-installs
-                          recommended skills + MCP servers.
+                          Bundled templates ship with the platform.
+                          Auto-installs recommended skills + MCP servers.
                         </p>
                       </div>
                     </button>
@@ -1349,7 +1529,8 @@ function AgentsPageInner() {
                         onClick={() => startImportFromModal(t.id)}
                         className={cn(
                           "flex w-full flex-col gap-2 px-5 py-4 text-left transition-colors hover:bg-paper-sunk",
-                          i < catalogTemplates.length - 1 && "border-b border-paper-rule/40"
+                          i < catalogTemplates.length - 1 &&
+                            "border-b border-paper-rule/40",
                         )}
                       >
                         <div className="flex items-baseline justify-between gap-3">
@@ -1370,7 +1551,8 @@ function AgentsPageInner() {
                             ))}
                           </div>
                           <span className="font-mono text-[11px] tabular-nums text-ink-faint">
-                            {t.counts.resources} files · {t.counts.skills} skills · {t.counts.mcpServers} MCP
+                            {t.counts.resources} files · {t.counts.skills}{" "}
+                            skills · {t.counts.mcpServers} MCP
                           </span>
                         </div>
                       </button>
@@ -1443,8 +1625,8 @@ function McpSection({
         </div>
         {globalEntries.length === 0 ? (
           <p className="border border-paper-rule bg-paper-sunk px-3 py-2 font-mono text-[12px] text-ink-soft">
-            No global servers configured. Add some in Settings → MCP, or
-            define an agent-private server below.
+            No global servers configured. Add some in Settings → MCP, or define
+            an agent-private server below.
           </p>
         ) : (
           <ul className="grid">
@@ -1459,7 +1641,7 @@ function McpSection({
                     className={cn(
                       "group relative flex w-full items-center gap-3 border-paper-rule px-3 py-2 text-left transition-colors",
                       idx === 0 ? "border-t border-b" : "border-b",
-                      inherited ? "bg-paper" : "bg-paper-sunk"
+                      inherited ? "bg-paper" : "bg-paper-sunk",
                     )}
                   >
                     <ActiveMarker active={inherited} />
@@ -1468,10 +1650,12 @@ function McpSection({
                         "flex size-4 shrink-0 items-center justify-center border",
                         inherited
                           ? "border-plot-red bg-plot-red text-paper"
-                          : "border-paper-rule bg-paper"
+                          : "border-paper-rule bg-paper",
                       )}
                     >
-                      {inherited && <Check className="size-3" strokeWidth={3} />}
+                      {inherited && (
+                        <Check className="size-3" strokeWidth={3} />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-mono text-[12px] text-ink">
@@ -1480,12 +1664,10 @@ function McpSection({
                       <div className="truncate font-mono text-[11px] text-ink-faint">
                         {cfg.command
                           ? `${cfg.command}${cfg.args && cfg.args.length > 0 ? " " + cfg.args.join(" ") : ""}`
-                          : cfg.url ?? ""}
+                          : (cfg.url ?? "")}
                       </div>
                     </div>
-                    {!inherited && (
-                      <Badge variant="outline">Excluded</Badge>
-                    )}
+                    {!inherited && <Badge variant="outline">Excluded</Badge>}
                   </button>
                 </li>
               );
@@ -1516,7 +1698,7 @@ function McpSection({
                 key={name}
                 className={cn(
                   "flex items-center gap-2 border-paper-rule px-3 py-2",
-                  idx === 0 ? "border-t border-b" : "border-b"
+                  idx === 0 ? "border-t border-b" : "border-b",
                 )}
               >
                 <div className="min-w-0 flex-1">
@@ -1526,7 +1708,7 @@ function McpSection({
                   <div className="truncate font-mono text-[11px] text-ink-faint">
                     {cfg.command
                       ? `${cfg.command}${cfg.args && cfg.args.length > 0 ? " " + cfg.args.join(" ") : ""}`
-                      : cfg.url ?? ""}
+                      : (cfg.url ?? "")}
                   </div>
                 </div>
                 <Button
@@ -1588,7 +1770,7 @@ function ToolPicker({
       <div className="space-y-4">
         {groups.map(([toolset, list]) => {
           const selectedInGroup = list.filter((t) =>
-            selected.includes(t.name)
+            selected.includes(t.name),
           ).length;
           return (
             <div key={toolset}>
@@ -1638,7 +1820,7 @@ function ToolToggle({
         "group relative flex items-start gap-3 border border-paper-rule px-3 py-2 text-left transition-colors",
         checked
           ? "bg-paper text-ink"
-          : "bg-paper-sunk text-ink-soft hover:bg-paper hover:text-ink"
+          : "bg-paper-sunk text-ink-soft hover:bg-paper hover:text-ink",
       )}
     >
       <ActiveMarker active={checked} />
@@ -1647,13 +1829,15 @@ function ToolToggle({
           "mt-0.5 flex size-4 shrink-0 items-center justify-center border transition-colors",
           checked
             ? "border-plot-red bg-plot-red text-paper"
-            : "border-paper-rule bg-paper"
+            : "border-paper-rule bg-paper",
         )}
       >
         {checked && <Check className="size-3" strokeWidth={3} />}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-mono text-[12px] text-ink">{tool.name}</div>
+        <div className="truncate font-mono text-[12px] text-ink">
+          {tool.name}
+        </div>
         <div className="line-clamp-2 text-[11px] text-ink-faint">
           {tool.description}
         </div>
@@ -1764,8 +1948,8 @@ function EmptyWorkforceState({ onCreate }: { onCreate: () => void }) {
         >
           <div className="label-faceplate mb-1">Persona</div>
           <div className="text-[13px] leading-snug text-ink-soft">
-            A short paragraph describing what this coworker does, the tone
-            they take, and what they shouldn&apos;t touch.
+            A short paragraph describing what this coworker does, the tone they
+            take, and what they shouldn&apos;t touch.
           </div>
         </div>
 
@@ -1814,9 +1998,9 @@ function EmptyWorkforceState({ onCreate }: { onCreate: () => void }) {
         This is the shape of an agent. Yours will live at{" "}
         <code className="px-1 py-0.5 font-mono text-[12px] text-ink">
           ~/.openacme/agents/&lt;id&gt;/AGENT.md
-        </code>
-        {" "}— YAML frontmatter for model, tools, and MCP servers, plus
-        prose for the persona.
+        </code>{" "}
+        — YAML frontmatter for model, tools, and MCP servers, plus prose for the
+        persona.
       </div>
 
       <div
@@ -1864,10 +2048,13 @@ function AgentDetail({
   const disabledSet = new Set(agent.mcpDisabled ?? []);
   const privateServers = Object.entries(agent.mcpServers ?? {});
   const inheritedServers = Object.entries(globalServers).filter(
-    ([name]) => !disabledSet.has(name)
+    ([name]) => !disabledSet.has(name),
   );
   const skillEntries = (agent.skills ?? [])
-    .map((name) => allSkills.find((s) => s.name === name) ?? { name, description: "" })
+    .map(
+      (name) =>
+        allSkills.find((s) => s.name === name) ?? { name, description: "" },
+    )
     .filter(Boolean);
 
   // Detail is ruled sections on the pane, not a floating card — one shared
@@ -1875,157 +2062,166 @@ function AgentDetail({
   return (
     <div className="mx-auto max-w-3xl">
       <div className="flex flex-row items-start justify-between gap-4 border-b border-paper-rule pb-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className="text-xl">{agent.name}</CardTitle>
-              {agent.managed && (
-                <Badge variant="outline" className="font-mono text-[11px]">
-                  Managed by OpenAcme
-                </Badge>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle className="text-xl">
+              {agent.avatar && (
+                <AgentAvatar
+                  avatar={agent.avatar}
+                  size="xl"
+                  className="mr-2 align-[-2px]"
+                />
               )}
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="font-mono text-[11px] tabular-nums text-ink-faint">
-                {agent.id}
-              </span>
-              <span className="text-ink-faint">·</span>
-              <span className="font-mono text-[11px] tabular-nums text-ink-soft">
-                {agent.model.provider}/{agent.model.model}
-              </span>
-            </div>
+              {agent.name}
+            </CardTitle>
+            {agent.managed && (
+              <Badge variant="outline" className="font-mono text-[11px]">
+                Managed by OpenAcme
+              </Badge>
+            )}
           </div>
-          {!agent.managed && (
-            <div className="flex items-center gap-2 shrink-0">
-              <Button size="sm" onClick={onEdit}>
-                <Pencil className="size-4" />
-                Edit
-              </Button>
-              <Button
-                variant="ghost-destructive"
-                size="sm"
-                onClick={onDelete}
-              >
-                <Trash2 className="size-4" />
-                Delete
-              </Button>
-            </div>
-          )}
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[11px] tabular-nums text-ink-faint">
+              {agent.id}
+            </span>
+            <span className="text-ink-faint">·</span>
+            <span className="font-mono text-[11px] tabular-nums text-ink-soft">
+              {agent.model.provider}/{agent.model.model}
+            </span>
+          </div>
+        </div>
+        {!agent.managed && (
+          <div className="flex items-center gap-2 shrink-0">
+            <Button size="sm" onClick={onEdit}>
+              <Pencil className="size-4" />
+              Edit
+            </Button>
+            <Button variant="ghost-destructive" size="sm" onClick={onDelete}>
+              <Trash2 className="size-4" />
+              Delete
+            </Button>
+          </div>
+        )}
       </div>
       <div className="divide-y divide-paper-rule [&>*]:py-5">
-          {agent.role && (
-            <div>
-              <Label className="mb-1.5 block">
-                Role
-                <span className="ml-2 font-normal text-ink-faint">
-                  visible to other agents
-                </span>
-              </Label>
-              <p className="text-[13px] leading-relaxed text-ink-soft">
-                {agent.role}
-              </p>
-            </div>
-          )}
-
-          <div>
-            <Label className="mb-1.5 block">Persona</Label>
-            <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
-              <Markdown>{agent.persona}</Markdown>
-            </div>
-          </div>
-
+        {agent.role && (
           <div>
             <Label className="mb-1.5 block">
-              Tools
+              Role
               <span className="ml-2 font-normal text-ink-faint">
-                {agent.tools.length} configurable
+                visible to other agents
               </span>
             </Label>
-            {agent.tools.length === 0 ? (
-              <p className="font-mono text-[12px] text-ink-faint">
-                None.
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {agent.tools.map((t) => (
-                  <Badge key={t} variant="outline" className="font-mono text-[11px]">
-                    {t}
-                  </Badge>
-                ))}
-              </div>
-            )}
+            <p className="text-[13px] leading-relaxed text-ink-soft">
+              {agent.role}
+            </p>
           </div>
+        )}
 
-          {skillEntries.length > 0 && (
-            <div>
-              <Label className="mb-1.5 block flex items-center gap-2">
-                <BookOpen className="size-3.5 text-ink-soft" />
-                Skills
-                <span className="font-normal text-ink-faint">
-                  {skillEntries.length} enabled
-                </span>
-              </Label>
-              <div className="flex flex-wrap gap-1.5">
-                {skillEntries.map((s) => (
-                  <Badge key={s.name} variant="outline" className="font-mono text-[11px]">
-                    {s.name}
-                  </Badge>
-                ))}
-              </div>
+        <div>
+          <Label className="mb-1.5 block">Persona</Label>
+          <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
+            <Markdown>{agent.persona}</Markdown>
+          </div>
+        </div>
+
+        <div>
+          <Label className="mb-1.5 block">
+            Tools
+            <span className="ml-2 font-normal text-ink-faint">
+              {agent.tools.length} configurable
+            </span>
+          </Label>
+          {agent.tools.length === 0 ? (
+            <p className="font-mono text-[12px] text-ink-faint">None.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {agent.tools.map((t) => (
+                <Badge
+                  key={t}
+                  variant="outline"
+                  className="font-mono text-[11px]"
+                >
+                  {t}
+                </Badge>
+              ))}
             </div>
           )}
+        </div>
 
+        {skillEntries.length > 0 && (
           <div>
             <Label className="mb-1.5 block flex items-center gap-2">
-              <Boxes className="size-3.5 text-ink-soft" />
-              MCP servers
+              <BookOpen className="size-3.5 text-ink-soft" />
+              Skills
+              <span className="font-normal text-ink-faint">
+                {skillEntries.length} enabled
+              </span>
             </Label>
-            {inheritedServers.length === 0 && privateServers.length === 0 ? (
-              <p className="font-mono text-[12px] text-ink-faint">
-                None.
-              </p>
-            ) : (
-              <ul className="border-y border-paper-rule">
-                {inheritedServers.map(([name, cfg]) => (
-                  <li
-                    key={`g-${name}`}
-                    className="flex items-center gap-3 border-b border-paper-rule/40 last:border-b-0 px-3 py-1.5"
-                  >
-                    <Badge variant="outline" className="font-mono text-[10px]">
-                      inherited
-                    </Badge>
-                    <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">
-                      {name}
-                    </span>
-                    <span className="shrink-0 truncate font-mono text-[11px] text-ink-faint max-w-[40%]">
-                      {cfg.command
-                        ? `${cfg.command}${cfg.args && cfg.args.length > 0 ? " " + cfg.args.join(" ") : ""}`
-                        : cfg.url ?? ""}
-                    </span>
-                  </li>
-                ))}
-                {privateServers.map(([name, cfg]) => (
-                  <li
-                    key={`p-${name}`}
-                    className="flex items-center gap-3 border-b border-paper-rule/40 last:border-b-0 px-3 py-1.5"
-                  >
-                    <Badge variant="outline" className="font-mono text-[10px]">
-                      private
-                    </Badge>
-                    <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">
-                      {name}
-                    </span>
-                    <span className="shrink-0 truncate font-mono text-[11px] text-ink-faint max-w-[40%]">
-                      {cfg.command
-                        ? `${cfg.command}${cfg.args && cfg.args.length > 0 ? " " + cfg.args.join(" ") : ""}`
-                        : cfg.url ?? ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <div className="flex flex-wrap gap-1.5">
+              {skillEntries.map((s) => (
+                <Badge
+                  key={s.name}
+                  variant="outline"
+                  className="font-mono text-[11px]"
+                >
+                  {s.name}
+                </Badge>
+              ))}
+            </div>
           </div>
+        )}
 
-          <AgentResourcesPanel agentId={agent.id} readOnly={agent.managed} />
+        <div>
+          <Label className="mb-1.5 block flex items-center gap-2">
+            <Boxes className="size-3.5 text-ink-soft" />
+            MCP servers
+          </Label>
+          {inheritedServers.length === 0 && privateServers.length === 0 ? (
+            <p className="font-mono text-[12px] text-ink-faint">None.</p>
+          ) : (
+            <ul className="border-y border-paper-rule">
+              {inheritedServers.map(([name, cfg]) => (
+                <li
+                  key={`g-${name}`}
+                  className="flex items-center gap-3 border-b border-paper-rule/40 last:border-b-0 px-3 py-1.5"
+                >
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    inherited
+                  </Badge>
+                  <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">
+                    {name}
+                  </span>
+                  <span className="shrink-0 truncate font-mono text-[11px] text-ink-faint max-w-[40%]">
+                    {cfg.command
+                      ? `${cfg.command}${cfg.args && cfg.args.length > 0 ? " " + cfg.args.join(" ") : ""}`
+                      : (cfg.url ?? "")}
+                  </span>
+                </li>
+              ))}
+              {privateServers.map(([name, cfg]) => (
+                <li
+                  key={`p-${name}`}
+                  className="flex items-center gap-3 border-b border-paper-rule/40 last:border-b-0 px-3 py-1.5"
+                >
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    private
+                  </Badge>
+                  <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">
+                    {name}
+                  </span>
+                  <span className="shrink-0 truncate font-mono text-[11px] text-ink-faint max-w-[40%]">
+                    {cfg.command
+                      ? `${cfg.command}${cfg.args && cfg.args.length > 0 ? " " + cfg.args.join(" ") : ""}`
+                      : (cfg.url ?? "")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <AgentResourcesPanel agentId={agent.id} readOnly={agent.managed} />
       </div>
     </div>
   );
@@ -2070,13 +2266,15 @@ function SkillsPicker({
           Skills
         </Label>
         <span className="font-mono text-[11px] tabular-nums text-ink-soft">
-          {inheritAll ? `all (${all.length})` : `${selected.length} / ${all.length}`}
+          {inheritAll
+            ? `all (${all.length})`
+            : `${selected.length} / ${all.length}`}
         </span>
       </div>
       {inheritAll && (
         <p className="font-mono text-[11px] text-ink-faint">
-          Empty selection means the agent sees every installed skill.
-          Pick one or more to scope it down.
+          Empty selection means the agent sees every installed skill. Pick one
+          or more to scope it down.
         </p>
       )}
       <div className="grid grid-cols-1 gap-px md:grid-cols-2">
@@ -2092,7 +2290,7 @@ function SkillsPicker({
                 "group relative flex items-start gap-3 border border-paper-rule px-3 py-2 text-left transition-colors",
                 checked
                   ? "bg-paper text-ink"
-                  : "bg-paper-sunk text-ink-soft hover:bg-paper hover:text-ink"
+                  : "bg-paper-sunk text-ink-soft hover:bg-paper hover:text-ink",
               )}
             >
               <ActiveMarker active={checked} />
@@ -2101,7 +2299,7 @@ function SkillsPicker({
                   "mt-0.5 flex size-4 shrink-0 items-center justify-center border transition-colors",
                   checked
                     ? "border-plot-red bg-plot-red text-paper"
-                    : "border-paper-rule bg-paper"
+                    : "border-paper-rule bg-paper",
                 )}
               >
                 {checked && <Check className="size-3" strokeWidth={3} />}

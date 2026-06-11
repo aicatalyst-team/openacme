@@ -193,6 +193,11 @@ export type AgentBrowserOverrides = z.infer<typeof AgentBrowserOverridesSchema>;
 export const AgentDefinitionSchema = z.object({
   id: z.string(),
   name: z.string(),
+  // Visual identity for UI surfaces (rosters, session rows, pickers).
+  // A text glyph (typically an emoji), or `icon:<name>` from the web
+  // UI's bundled icon set. Clients fall back to a generic agent icon
+  // when absent or when they can't render the value (e.g. TUI + icons).
+  avatar: z.string().optional(),
   // Description of this agent for their coworkers in the workforce.
   // Read in third-person ("this agent owns X, handles Y, redirects Z
   // to @other"). Distinct from `persona` (second-person, the agent's

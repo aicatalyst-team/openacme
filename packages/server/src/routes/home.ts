@@ -18,6 +18,8 @@ export interface SessionSummary {
   sessionId: string;
   agentId: string;
   agentName: string;
+  /** Agent's avatar glyph, when set on the AgentDefinition. */
+  agentAvatar?: string;
   title: string | null;
   /** Human-readable status label. Values: "waiting" | "running" | "idle". */
   status: "waiting" | "running" | "idle";
@@ -45,6 +47,8 @@ export interface MessageSearchHit {
   sessionId: string;
   agentId: string;
   agentName: string;
+  /** Agent's avatar glyph, when set on the AgentDefinition. */
+  agentAvatar?: string;
   sessionTitle: string | null;
   /** Which side of the conversation matched. */
   role: "user" | "assistant";
@@ -107,9 +111,9 @@ export function registerHomeRoutes(app: Hono, manager: AgentManager): void {
     const rows = manager.messageStore.search(expr, limit);
     if (rows.length === 0) return c.json({ results: [] as MessageSearchHit[] });
 
-    const agentNames = new Map<string, string>();
+    const agentIdentity = new Map<string, { name: string; avatar?: string }>();
     for (const def of manager.listAgents()) {
-      agentNames.set(def.id, def.name);
+      agentIdentity.set(def.id, { name: def.name, avatar: def.avatar });
     }
 
     // FTS can return repeated sessions across multiple message hits.
@@ -128,7 +132,8 @@ export function registerHomeRoutes(app: Hono, manager: AgentManager): void {
       results.push({
         sessionId: row.sessionId,
         agentId: session.agentId,
-        agentName: agentNames.get(session.agentId) ?? session.agentId,
+        agentName: agentIdentity.get(session.agentId)?.name ?? session.agentId,
+        agentAvatar: agentIdentity.get(session.agentId)?.avatar,
         sessionTitle: session.title,
         role: row.role as "user" | "assistant",
         snippet: makeSnippet(row.content, raw),
@@ -145,9 +150,9 @@ export function buildHomePayload(manager: AgentManager): HomePayload {
   // parents). The list is cross-agent so we see every agent's work in
   // one place.
   const sessions = manager.sessionStore.listAllActive();
-  const agentNames = new Map<string, string>();
+  const agentIdentity = new Map<string, { name: string; avatar?: string }>();
   for (const def of manager.listAgents()) {
-    agentNames.set(def.id, def.name);
+    agentIdentity.set(def.id, { name: def.name, avatar: def.avatar });
   }
 
   // Pings (waiting): map sessionId → ping payload. The query already
@@ -190,7 +195,8 @@ export function buildHomePayload(manager: AgentManager): HomePayload {
     const summary: SessionSummary = {
       sessionId: session.id,
       agentId: session.agentId,
-      agentName: agentNames.get(session.agentId) ?? session.agentId,
+      agentName: agentIdentity.get(session.agentId)?.name ?? session.agentId,
+      agentAvatar: agentIdentity.get(session.agentId)?.avatar,
       title: session.title,
       status: ping
         ? "waiting"

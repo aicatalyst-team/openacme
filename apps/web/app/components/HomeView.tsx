@@ -21,7 +21,6 @@ import {
   Bell,
   CircleDot,
   Pause,
-  Bot,
   Clock,
   MessageSquarePlus,
   Plus,
@@ -38,6 +37,7 @@ import { navigateClient } from "@/app/lib/navigate";
 import { InstallHint } from "@/app/components/InstallHint";
 import { NotificationsPrompt } from "@/app/components/NotificationsPrompt";
 import { AgentRef } from "@/app/components/ui/agent-ref";
+import { AgentAvatar } from "@/app/components/ui/agent-avatar";
 import { Button } from "@/app/components/ui/button";
 import {
   Popover,
@@ -52,6 +52,7 @@ interface AgentPickerEntry {
   id: string;
   name: string;
   role: string;
+  avatar?: string;
 }
 
 function formatRelative(unixSeconds: number): string {
@@ -171,7 +172,7 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
             {s.title || "Untitled session"}
           </div>
           <div className="flex items-center gap-1 truncate text-[11px] text-ink-soft">
-            <Bot className="size-3 shrink-0" aria-hidden />
+            <AgentAvatar avatar={s.agentAvatar} size="sm" />
             <AgentRef
               id={s.agentId}
               label={s.agentName}
@@ -227,7 +228,7 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
             line 1, agent + relative time on line 2 (closer to phone
             conventions and gives the title room to breathe). */}
         <div className="hidden items-center gap-2 text-sm md:flex">
-          <Bot className="size-3.5 shrink-0 text-ink-soft" aria-hidden />
+          <AgentAvatar avatar={s.agentAvatar} size="md" className="text-ink-soft" />
           <Link
             href={`/agents?id=${encodeURIComponent(s.agentId)}`}
             onClick={(e) => e.stopPropagation()}
@@ -497,6 +498,13 @@ function NewChatPopover({ compact }: { compact: boolean }) {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-medium text-ink">
+                      {a.avatar && (
+                        <AgentAvatar
+                          avatar={a.avatar}
+                          size="md"
+                          className="mr-1.5 align-[-2px] text-ink-soft"
+                        />
+                      )}
                       {a.name}
                     </div>
                     {a.role && (
@@ -730,6 +738,13 @@ function EmptyState({ compact }: { compact: boolean }) {
               />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-medium text-ink">
+                  {a.avatar && (
+                    <AgentAvatar
+                      avatar={a.avatar}
+                      size="md"
+                      className="mr-1.5 align-[-2px] text-ink-soft"
+                    />
+                  )}
                   {a.name}
                 </div>
                 {a.role && (
@@ -752,6 +767,7 @@ interface MessageSearchHit {
   sessionId: string;
   agentId: string;
   agentName: string;
+  agentAvatar?: string;
   sessionTitle: string | null;
   role: "user" | "assistant";
   snippet: string;
@@ -764,6 +780,7 @@ interface SearchResultEntry {
   sessionId: string;
   agentId: string;
   agentName: string;
+  agentAvatar?: string;
   title: string | null;
   /** What surface produced this match — drives the leading badge text. */
   kind: "agent" | "title" | "ping" | "message";
@@ -935,7 +952,7 @@ function SearchResultRow({
             {entry.title || "Untitled session"}
           </span>
           <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
-            <Bot className="size-2.5" aria-hidden />
+            <AgentAvatar avatar={entry.agentAvatar} size="xs" />
             <span className="truncate max-w-[8rem]">{entry.agentName}</span>
             <span aria-hidden>·</span>
             <span>{KIND_LABEL[entry.kind]}</span>
@@ -1108,6 +1125,7 @@ export function HomeView({ compact = false }: { compact?: boolean } = {}) {
             sessionId: s.sessionId,
             agentId: s.agentId,
             agentName: s.agentName,
+            agentAvatar: s.agentAvatar,
             title: s.title,
             kind: "title",
             status: s.status,
@@ -1123,6 +1141,7 @@ export function HomeView({ compact = false }: { compact?: boolean } = {}) {
             sessionId: s.sessionId,
             agentId: s.agentId,
             agentName: s.agentName,
+            agentAvatar: s.agentAvatar,
             title: s.title,
             kind: "agent",
             status: s.status,
@@ -1138,6 +1157,7 @@ export function HomeView({ compact = false }: { compact?: boolean } = {}) {
             sessionId: s.sessionId,
             agentId: s.agentId,
             agentName: s.agentName,
+            agentAvatar: s.agentAvatar,
             title: s.title,
             kind: "ping",
             status: s.status,
@@ -1153,6 +1173,7 @@ export function HomeView({ compact = false }: { compact?: boolean } = {}) {
         sessionId: h.sessionId,
         agentId: h.agentId,
         agentName: h.agentName,
+        agentAvatar: h.agentAvatar,
         title: h.sessionTitle,
         kind: "message",
         status: statusBySession.get(h.sessionId) ?? null,
