@@ -428,3 +428,42 @@
     animation: none;
   }
 }
+
+/* Emoji picker (emoji-picker-react) — remapped to paper/ink tokens so it
+   reads as part of the design system, not a third-party widget. */
+.avatar-emoji-picker .EmojiPickerReact {
+  --epr-bg-color: var(--paper);
+  --epr-text-color: var(--ink-soft);
+  --epr-hover-bg-color: var(--paper-sunk);
+  --epr-focus-bg-color: var(--paper-sunk);
+  --epr-highlight-color: var(--plot-red);
+  --epr-search-input-bg-color: var(--paper);
+  --epr-search-input-bg-color-active: var(--paper);
+  --epr-search-input-text-color: var(--ink);
+  --epr-search-input-placeholder-color: var(--ink-faint);
+  --epr-search-border-color: var(--plot-red);
+  --epr-category-label-bg-color: var(--paper);
+  --epr-category-label-text-color: var(--ink-soft);
+  --epr-category-icon-active-color: var(--plot-red);
+  --epr-picker-border-radius: 0;
+  --epr-search-input-border-radius: 0;
+  --epr-emoji-size: 22px;
+  border: none;
+  font-family: var(--font-sans);
+}
+.avatar-emoji-picker .EmojiPickerReact .epr-body {
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+}
+.avatar-emoji-picker .EmojiPickerReact input.epr-search {
+  border: 1px solid var(--paper-rule);
+}
+.avatar-emoji-picker .EmojiPickerReact input.epr-search:focus {
+  border-color: var(--plot-red);
+}
+.avatar-emoji-picker .EmojiPickerReact .epr-emoji-category-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
