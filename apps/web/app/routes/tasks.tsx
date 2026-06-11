@@ -6,12 +6,9 @@ import { toast } from "sonner";
 import { Sidebar } from "../components/Sidebar";
 import { API_BASE } from "../lib/api";
 import { Button } from "@/app/components/ui/button";
-import { Badge } from "@/app/components/ui/badge";
 import { SectionEyebrow } from "@/app/components/ui/section-eyebrow";
 import { TabularTick } from "@/app/components/ui/tabular-tick";
 import { LoadingHairline } from "@/app/components/ui/loading-hairline";
-import { ActiveMarker } from "@/app/components/ui/active-marker";
-import { AgentRef } from "@/app/components/ui/agent-ref";
 import { JargonChip } from "@/app/components/ui/jargon-chip";
 import {
   Dialog,
@@ -25,13 +22,10 @@ import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import { cn } from "@/app/lib/utils";
 import { TasksBoard } from "../tasks/board";
 import { TaskDetailPanel, type AgentOption } from "../tasks/detail";
+import { TaskListRow } from "../tasks/row";
 import {
   STATUS_LABEL,
   STATUS_ORDER,
-  STATUS_VARIANT,
-  dueUrgencyClass,
-  formatDate,
-  formatRelativeFutureFromIso,
   type Task,
   type TaskStatus,
 } from "../tasks/types";
@@ -330,71 +324,16 @@ function TasksPage() {
                     <TabularTick value={items.length} />
                   </div>
                   <div className="flex flex-col">
-                    {items.map((t) => {
-                      const isActive = selected?.id === t.id;
-                      return (
-                        <div
-                          key={t.id}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => void navigate({ to: "/tasks", search: { id: t.id } })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              void navigate({ to: "/tasks", search: { id: t.id } });
-                            }
-                          }}
-                          className={cn(
-                            "group relative flex cursor-pointer flex-col items-start gap-1 border-b border-paper-rule/40 px-4 py-3 text-left transition-colors last:border-b-0",
-                            isActive
-                              ? "bg-paper-sunk text-ink"
-                              : "text-ink-soft hover:bg-paper-sunk hover:text-ink"
-                          )}
-                        >
-                          <ActiveMarker active={isActive} />
-                          <div className="flex w-full items-center gap-2">
-                            <Badge
-                              variant={STATUS_VARIANT[t.status]}
-                              className="shrink-0"
-                            >
-                              {STATUS_LABEL[t.status]}
-                            </Badge>
-                            <span className="truncate text-sm font-medium text-ink">
-                              {t.title}
-                            </span>
-                          </div>
-                          <div className="flex w-full flex-wrap gap-x-3 font-mono text-[11px] tabular-nums text-ink-faint">
-                            <AgentRef id={t.assignee} />
-                            {t.due_at && (
-                              <span className={dueUrgencyClass(t.due_at)}>
-                                due {formatDate(t.due_at)}
-                              </span>
-                            )}
-                            {t.start_at &&
-                              (new Date(t.start_at).getTime() > Date.now() ? (
-                                <span className="text-signal-blue">
-                                  starts {formatRelativeFutureFromIso(t.start_at)}
-                                </span>
-                              ) : (
-                                <span>starts {formatDate(t.start_at)}</span>
-                              ))}
-                            {t.depends_on.length > 0 && (
-                              <span>
-                                {t.depends_on.length} dep
-                                {t.depends_on.length === 1 ? "" : "s"}
-                              </span>
-                            )}
-                            {t.comment_count !== undefined &&
-                              t.comment_count > 0 && (
-                                <span>
-                                  {t.comment_count} comment
-                                  {t.comment_count === 1 ? "" : "s"}
-                                </span>
-                              )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {items.map((t) => (
+                      <TaskListRow
+                        key={t.id}
+                        task={t}
+                        isActive={selected?.id === t.id}
+                        onPick={() =>
+                          void navigate({ to: "/tasks", search: { id: t.id } })
+                        }
+                      />
+                    ))}
                   </div>
                 </div>
               );
