@@ -255,6 +255,15 @@ export function createAgentStore(agentsDir: string): AgentStore {
       }
       const dir = path.dirname(abs);
       fs.mkdirSync(dir, { recursive: true });
+      // String containment can't see a symlinked intermediate dir, which
+      // would carry the write outside the root — realpath the parent.
+      const realRoot = fs.realpathSync(
+        path.join(this.agentDir(id) as string, "resources")
+      );
+      const realDir = fs.realpathSync(dir);
+      if (!(realDir === realRoot || realDir.startsWith(realRoot + path.sep))) {
+        throw new Error(`Invalid resource path: ${relPath}`);
+      }
       // tmp+rename for atomicity; same-dir tmp guarantees atomic rename on POSIX.
       const tmp = path.join(dir, `.tmp-${randomUUID()}`);
       try {
@@ -274,6 +283,13 @@ export function createAgentStore(agentsDir: string): AgentStore {
       const abs = this.resourceAbsPath(id, relPath);
       if (!abs) return false;
       try {
+        const realRoot = fs.realpathSync(
+          path.join(this.agentDir(id) as string, "resources")
+        );
+        const realDir = fs.realpathSync(path.dirname(abs));
+        if (!(realDir === realRoot || realDir.startsWith(realRoot + path.sep))) {
+          return false;
+        }
         fs.unlinkSync(abs);
         return true;
       } catch (e) {

@@ -202,8 +202,14 @@ describe("GET /api/fs/:kind/:ownerId/:scope/file/*", () => {
     expect(traversal.status).toBe(400);
     const git = await req("/api/fs/agent/helper/workspace/file/.git/config");
     expect(git.status).toBe(400);
+    // APFS is case-insensitive — `.GIT` must not slip the check.
+    const gitUpper = await req(
+      "/api/fs/agent/helper/workspace/file/.GIT/config"
+    );
+    expect(gitUpper.status).toBe(400);
+    // Escaping symlinks 404 like missing files — no existence signal.
     const link = await req("/api/fs/agent/helper/workspace/file/escape");
-    expect(link.status).toBe(400);
+    expect(link.status).toBe(404);
   });
 });
 
@@ -233,6 +239,26 @@ describe("POST /api/fs/agent/:ownerId/stat", () => {
       relPath: "guide.md",
     });
     expect(results["missing.md"]).toBeNull();
+  });
+
+  it("does not stat through out-of-root symlinks", async () => {
+    await createAgent();
+    writeFileSync(path.join(dataDir, "outside.txt"), "secret");
+    symlinkSync(
+      path.join(dataDir, "outside.txt"),
+      path.join(workspaceDir("helper"), "leak")
+    );
+    const res = await req("/api/fs/agent/helper/stat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paths: ["leak"] }),
+    });
+    expect(res.status).toBe(200);
+    const { results } = (await res.json()) as {
+      results: Record<string, unknown>;
+    };
+    // Existence + size of out-of-root targets must not leak.
+    expect(results["leak"]).toBeNull();
   });
 
   it("resolves scope-prefixed paths the way agents write them", async () => {

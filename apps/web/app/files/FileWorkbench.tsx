@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 import { FileBrowser } from "./FileBrowser";
 import { FilePreview } from "./FilePreview";
@@ -23,10 +23,16 @@ export function FileWorkbench({
   const [error, setError] = useState<string | null>(null);
 
   const rootKey = `${root.kind}:${root.id}:${root.scope}`;
+  const rootKeyRef = useRef(rootKey);
+  rootKeyRef.current = rootKey;
 
   const refresh = useCallback(async () => {
+    // The component doesn't remount on root change — a slow fetch for the
+    // previous root must not land as this root's listing.
+    const requestedKey = rootKey;
     try {
       const next = await fetchTree(root);
+      if (rootKeyRef.current !== requestedKey) return;
       setTree(next);
       setError(null);
       // Keep the selection only if the file survived the refresh.
@@ -34,6 +40,7 @@ export function FileWorkbench({
         prev ? (next.files.find((f) => f.path === prev.path) ?? null) : null
       );
     } catch (err) {
+      if (rootKeyRef.current !== requestedKey) return;
       setError(err instanceof Error ? err.message : String(err));
     }
     // root is identity-unstable (inline object literals at call sites);

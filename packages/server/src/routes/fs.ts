@@ -100,10 +100,27 @@ function resolveFsRoot(
 }
 
 /** Resolve a relPath inside a root with dotfiles admitted but `.git`
- *  (and traversal, per resolveContainedPath) rejected. */
+ *  (and traversal, per resolveContainedPath) rejected. Lowercased compare —
+ *  APFS is case-insensitive, so `.GIT` would otherwise serve `.git`. */
 function resolveFsPath(rootDir: string, relPath: string): string | null {
-  if (relPath.replace(/\\/g, "/").split("/").includes(".git")) return null;
+  const segments = relPath.replace(/\\/g, "/").split("/");
+  if (segments.some((s) => s.toLowerCase() === ".git")) return null;
   return resolveContainedPath(rootDir, relPath, { allowDotSegments: true });
+}
+
+/** Realpath containment — symlinks inside a root must not reach outside it.
+ *  Null means the file doesn't exist or its target escapes the root. */
+function realContainedPath(rootDir: string, abs: string): string | null {
+  let real: string;
+  let realRoot: string;
+  try {
+    real = fs.realpathSync(abs);
+    realRoot = fs.realpathSync(rootDir);
+  } catch {
+    return null;
+  }
+  if (!(real === realRoot || real.startsWith(realRoot + path.sep))) return null;
+  return real;
 }
 
 /** Recursive listing. Files only — directories are derived client-side.
@@ -138,7 +155,7 @@ function walkTree(
         truncated = true;
         return;
       }
-      if (EXCLUDED_DIRS.has(entry.name)) continue;
+      if (EXCLUDED_DIRS.has(entry.name.toLowerCase())) continue;
       if (rel === "" && opts?.excludeRootFiles?.has(entry.name)) continue;
       const full = path.join(dir, entry.name);
       const relPath = rel ? `${rel}/${entry.name}` : entry.name;
@@ -313,17 +330,8 @@ export function registerFsRoutes(
 
     // The walk never lists symlinks, but the path is caller-supplied —
     // realpath both sides so a link inside the root can't read outside it.
-    let real: string;
-    let realRoot: string;
-    try {
-      real = fs.realpathSync(abs);
-      realRoot = fs.realpathSync(root.rootDir);
-    } catch {
-      return c.json({ error: "Not found" }, 404);
-    }
-    if (!(real === realRoot || real.startsWith(realRoot + path.sep))) {
-      return c.json({ error: "Invalid path" }, 400);
-    }
+    const real = realContainedPath(root.rootDir, abs);
+    if (!real) return c.json({ error: "Not found" }, 404);
 
     const policy = servePolicy(real);
     return serveFileWithRange(c, real, path.basename(relPath), {
@@ -475,9 +483,13 @@ export function registerFsRoutes(
         for (const relPath of candidates) {
           const abs = resolveFsPath(root.rootDir, relPath);
           if (!abs) continue;
+          // Same realpath gate as the bytes endpoint — a planted symlink
+          // must not leak even the existence/size of out-of-root files.
+          const real = realContainedPath(root.rootDir, abs);
+          if (!real) continue;
           let stat: fs.Stats;
           try {
-            stat = fs.statSync(abs);
+            stat = fs.statSync(real);
           } catch {
             continue;
           }
