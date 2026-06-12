@@ -16,6 +16,27 @@ import {
   toolError,
 } from "./bindings.js";
 
+// Providers cap vision input dimensions (Anthropic rejects any side over
+// 8000px); full-page captures of long pages routinely blow past that.
+const MAX_IMAGE_DIM = 7900;
+
+function pngDimensions(bytes: Buffer): { width: number; height: number } | null {
+  if (bytes.length < 24 || bytes.readUInt32BE(12) !== 0x49484452) return null;
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+export async function clampPngDimensions(bytes: Buffer): Promise<Buffer> {
+  const dims = pngDimensions(bytes);
+  if (!dims || (dims.width <= MAX_IMAGE_DIM && dims.height <= MAX_IMAGE_DIM)) {
+    return bytes;
+  }
+  const sharp = (await import("sharp")).default;
+  return await sharp(bytes)
+    .resize({ width: MAX_IMAGE_DIM, height: MAX_IMAGE_DIM, fit: "inside" })
+    .png()
+    .toBuffer();
+}
+
 const ScreenshotParams = z.object({
   fullPage: z
     .boolean()
@@ -46,7 +67,7 @@ registry.register({
     if (guard) return guard;
     try {
       const r = await b.manager.takeScreenshot(agentId!, p);
-      const bytes = Buffer.from(r.pngBase64, "base64");
+      const bytes = await clampPngDimensions(Buffer.from(r.pngBase64, "base64"));
       const ts = new Date()
         .toISOString()
         .replace(/[:.]/g, "-")
