@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { ManagerBadge } from "./manager-badge";
 import { MemberRowMenu } from "./row-menu";
-import { useHomeStream } from "../lib/useHomeStream";
+import { STATUS_DOT, STATUS_TEXT, useAgentWork } from "./useAgentWork";
 import { AgentAvatar } from "@/app/components/ui/agent-avatar";
 import { AgentRef } from "@/app/components/ui/agent-ref";
 import { Button } from "@/app/components/ui/button";
@@ -16,18 +16,6 @@ import { cn } from "@/app/lib/utils";
 import { formatRelativeFromUnix } from "../tasks/types";
 import { putTeam } from "./api";
 import type { AgentInfo, AgentLiveStatus, Team } from "./types";
-
-const STATUS_DOT: Record<AgentLiveStatus, string> = {
-  waiting: "bg-plot-red pulse-live",
-  running: "bg-signal-blue",
-  idle: "bg-ink-faint",
-};
-
-const STATUS_TEXT: Record<AgentLiveStatus, string> = {
-  waiting: "text-plot-red",
-  running: "text-signal-blue",
-  idle: "text-ink-soft",
-};
 
 export function AddMemberPicker({
   candidates,
@@ -95,17 +83,6 @@ export function AddMemberPicker({
   );
 }
 
-interface AgentWork {
-  status: AgentLiveStatus;
-  /** Task title from the session driving the status, if any. */
-  currentTaskTitle: string | null;
-  /** Non-terminal tasks bound to this agent's sessions. */
-  pending: number;
-  /** Most recent activity across the agent's sessions (unix-seconds). */
-  lastActivity: number;
-  pingMessage?: string;
-}
-
 export function TeamMembersTab({
   team,
   agents,
@@ -115,31 +92,7 @@ export function TeamMembersTab({
   agents: AgentInfo[];
   onChanged: () => void;
 }) {
-  const { payload, loading } = useHomeStream();
-
-  // Per-agent rollup across the agent's sessions; waiting > running > idle.
-  const workByAgent = useMemo(() => {
-    const m = new Map<string, AgentWork>();
-    if (!payload) return m;
-    const buckets: Array<[AgentLiveStatus, typeof payload.idle]> = [
-      ["idle", payload.idle],
-      ["running", payload.running],
-      ["waiting", payload.waiting],
-    ];
-    for (const [status, sessions] of buckets) {
-      for (const s of sessions) {
-        const prev = m.get(s.agentId);
-        m.set(s.agentId, {
-          status,
-          currentTaskTitle: s.currentTaskTitle ?? prev?.currentTaskTitle ?? null,
-          pending: (prev?.pending ?? 0) + s.pendingTaskCount,
-          lastActivity: Math.max(prev?.lastActivity ?? 0, s.lastActivity),
-          pingMessage: s.pingMessage ?? prev?.pingMessage,
-        });
-      }
-    }
-    return m;
-  }, [payload]);
+  const { workByAgent, loading, payload } = useAgentWork();
 
   const agentById = useMemo(
     () => new Map(agents.map((a) => [a.id, a])),
