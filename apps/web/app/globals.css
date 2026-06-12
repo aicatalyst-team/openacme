@@ -505,3 +505,32 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* React Flow (org chart) — base.css only; the paper/ink tokens supply
+   the theme. Handles exist for edge anchoring but are never shown. */
+.org-chart .react-flow__handle {
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  pointer-events: none;
+}
+.org-chart .react-flow__edge-path {
+  stroke-width: 1;
+}
+.org-chart .react-flow__attribution {
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.org-chart .react-flow__attribution a {
+  color: var(--ink-faint);
+}
+.org-chart .react-flow__pane {
+  cursor: grab;
+}
+.org-chart .react-flow__pane.dragging {
+  cursor: grabbing;
+}

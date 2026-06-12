@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Users, Plus, Pencil, Archive, ArchiveRestore } from "lucide-react";
+import {
+  Users,
+  Plus,
+  Pencil,
+  Archive,
+  ArchiveRestore,
+  List,
+  Network,
+} from "lucide-react";
 import { toast } from "sonner";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
@@ -20,6 +28,7 @@ import { TeamMembersTab } from "../teams/members";
 import { TeamTasksTab, useTeamTasks } from "../teams/tasks";
 import { TeamCharterTab } from "../teams/charter";
 import { TeamCreateForm } from "../teams/create";
+import { OrgChart } from "../teams/org-chart";
 import { putTeam } from "../teams/api";
 import { FileWorkbench } from "../files/FileWorkbench";
 import type { AgentInfo, Team } from "../teams/types";
@@ -31,6 +40,7 @@ export const Route = createFileRoute("/teams")({
   validateSearch: z.object({
     id: z.coerce.string().optional(),
     tab: z.enum(TEAM_TABS).optional().catch(undefined),
+    view: z.enum(["list", "chart"]).optional().catch(undefined),
   }),
   component: TeamsPage,
 });
@@ -40,6 +50,7 @@ function TeamsPage() {
   const search = Route.useSearch();
   const urlId = search.id ?? null;
   const tab: TeamTab = search.tab ?? "members";
+  const view: "list" | "chart" = search.view ?? "list";
 
   const [teams, setTeams] = useState<Team[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
@@ -88,6 +99,18 @@ function TeamsPage() {
   function startCreate() {
     setIsCreating(true);
     void navigate({ to: "/teams", search: {}, replace: true });
+  }
+
+  function setView(next: "list" | "chart") {
+    void navigate({
+      to: "/teams",
+      search: {
+        id: urlId ?? undefined,
+        tab: search.tab,
+        view: next === "list" ? undefined : next,
+      },
+      replace: true,
+    });
   }
 
   function selectTeam(id: string) {
@@ -149,12 +172,58 @@ function TeamsPage() {
               Teams
             </h1>
           </div>
-          <Button size="sm" onClick={startCreate}>
-            <Plus className="size-4" />
-            <span className="hidden sm:inline">New team</span>
-          </Button>
+          <div className="flex items-center gap-2 md:gap-3">
+            <div className="flex border border-paper-rule">
+              {(
+                [
+                  ["list", List, "List"],
+                  ["chart", Network, "Org chart"],
+                ] as const
+              ).map(([v, Icon, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setView(v)}
+                  aria-pressed={view === v}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors",
+                    view === v
+                      ? "bg-paper-sunk text-ink"
+                      : "text-ink-faint hover:text-ink"
+                  )}
+                >
+                  <Icon className="size-3.5" aria-hidden />
+                  <span className="hidden sm:inline">{label}</span>
+                </button>
+              ))}
+            </div>
+            <Button size="sm" onClick={startCreate}>
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">New team</span>
+            </Button>
+          </div>
         </header>
 
+        {view === "chart" && !isCreating ? (
+          teams.some((t) => !t.archived) ? (
+            <div className="relative flex-1 overflow-hidden">
+              <OrgChart teams={teams} agents={agents} selectedId={urlId} />
+            </div>
+          ) : (
+            <div className="flex flex-1 items-start justify-center p-4 md:p-6">
+              <div className="mt-10 w-full max-w-md border border-dashed border-paper-rule px-4 py-10 text-center">
+                <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
+                  {teams.length > 0 ? "All teams archived" : "No teams yet"}
+                </p>
+                <p className="mt-1 text-sm text-ink-faint">
+                  {teams.length > 0
+                    ? "Restore a team to see the org chart."
+                    : "The chart appears once your workforce has structure — create a team to start."}
+                </p>
+              </div>
+            </div>
+          )
+        ) : (
         <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
           <aside
             className={cn(
@@ -378,6 +447,7 @@ function TeamsPage() {
             )}
           </div>
         </div>
+        )}
       </main>
     </div>
   );
