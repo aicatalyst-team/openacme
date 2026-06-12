@@ -64,7 +64,7 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.15.3",
     "@types/web-push": "^3.6.4",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.10.0",
     "tsx": "^4.21.0",
     "typescript": "5.9.2",
     "vite": "^8.0.16",
