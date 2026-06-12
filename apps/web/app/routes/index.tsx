@@ -18,7 +18,11 @@ import { useLiveSession } from "../lib/useLiveSession";
 import { Markdown } from "../components/Markdown";
 import { AttachmentChip } from "../components/AttachmentChip";
 import { MediaPreview } from "../components/MediaPreview";
-import { ToolBlock } from "../components/ToolBlock";
+import {
+  ToolBlock,
+  PingUserCallout,
+  type ToolPart,
+} from "../components/ToolBlock";
 import { API_BASE } from "../lib/api";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
@@ -1565,8 +1569,14 @@ const MessageBubble = memo(function MessageBubble({
     );
   }
 
-  // assistant — render parts in order
+  // assistant — render parts in order, except ping_user calls: those hoist
+  // to a callout at the bottom of the bubble. The ping is the "needs you"
+  // signal, and inline it gets buried under post-ping narration.
   const parts = message.parts;
+  const pingParts = parts.filter(
+    (p) =>
+      isToolPart(p) && (p as { type: string }).type === "tool-ping_user"
+  );
   const modelLabel = agent ? agent.model.model : undefined;
   const lastTextIdx = (() => {
     for (let i = parts.length - 1; i >= 0; i--) {
@@ -1604,6 +1614,7 @@ const MessageBubble = memo(function MessageBubble({
               output?: unknown;
               errorText?: string;
             };
+            if (tp.type === "tool-ping_user") return null;
             return <ToolBlock key={i} part={tp} />;
           }
           if ((part as { type?: unknown }).type === "text") {
@@ -1647,6 +1658,12 @@ const MessageBubble = memo(function MessageBubble({
           // reasoning / file / source / other data-* — ignored in v1.
           return null;
         })}
+        {pingParts.map((part, i) => (
+          <PingUserCallout
+            key={`ping-${i}`}
+            part={part as unknown as ToolPart}
+          />
+        ))}
       </div>
     </section>
   );
