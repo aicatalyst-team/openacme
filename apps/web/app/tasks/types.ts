@@ -1,3 +1,6 @@
+import cronstrue from "cronstrue";
+import { formatDistanceToNowStrict } from "date-fns";
+
 export type TaskStatus =
   | "open"
   | "in_progress"
@@ -84,11 +87,19 @@ export const STATUS_VARIANT: Record<
   canceled: "outline",
 };
 
-// sv-SE renders ISO-shape (YYYY-MM-DD HH:MM:SS) in the user's local TZ —
+// sv-SE renders ISO-shape (YYYY-MM-DD HH:MM) in the user's local TZ —
 // locale-stable, no Z confusion, matches the engraved-faceplate register.
+// Seconds are dropped: at card/footer altitude they're noise. Hover
+// tooltips use formatAbsoluteFromUnix for full precision.
 export function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleString("sv-SE");
+    return new Date(iso).toLocaleString("sv-SE", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   } catch {
     return iso;
   }
@@ -129,14 +140,23 @@ export interface TaskEvent {
 }
 
 export function formatRelativeFromUnix(unixSec: number): string {
-  const diffSec = Math.max(0, Math.floor(Date.now() / 1000 - unixSec));
-  if (diffSec < 60) return `${diffSec}s ago`;
-  const m = Math.floor(diffSec / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
+  try {
+    return formatDistanceToNowStrict(new Date(unixSec * 1000), {
+      addSuffix: true,
+    });
+  } catch {
+    return String(unixSec);
+  }
+}
+
+// Humanized audit timestamps ("3 weeks ago"); pair with a title tooltip
+// carrying the absolute date.
+export function formatRelativeFromIso(iso: string): string {
+  try {
+    return formatDistanceToNowStrict(new Date(iso), { addSuffix: true });
+  } catch {
+    return iso;
+  }
 }
 
 // Urgency tint for a due-at deadline. Overdue → destructive (red).
@@ -155,27 +175,24 @@ export function dueUrgencyClass(
   return undefined;
 }
 
-// Humanized future delta: "in 5m", "in 3h", "in 2d". For past timestamps,
-// falls back to ISO via formatDate so callers don't have to branch.
-export function formatRelativeFutureFromIso(iso: string): string {
-  const ts = new Date(iso).getTime();
-  if (!Number.isFinite(ts)) return iso;
-  const diffSec = Math.floor((ts - Date.now()) / 1000);
-  if (diffSec <= 0) return formatDate(iso);
-  if (diffSec < 60) return "in <1m";
-  const m = Math.floor(diffSec / 60);
-  if (m < 60) return `in ${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `in ${h}h`;
-  const d = Math.floor(h / 24);
-  return `in ${d}d`;
-}
-
-export function shortRecurrenceLabel(rec: Recurrence): string {
+// Full schedule for tooltips: humanized text plus tz and the raw expr.
+export function recurrenceTitle(rec: Recurrence): string {
   if (rec.kind === "cron") {
-    return rec.tz ? `${rec.expr} (${rec.tz})` : rec.expr;
+    const text = describeCron(rec.expr) ?? "Cron schedule";
+    return `${text}${rec.tz ? ` (${rec.tz})` : ""} · ${rec.expr}`;
   }
   return formatMs(rec.every_ms);
+}
+
+// Cron → English preview via cronstrue. Null on anything it can't
+// parse — the editor shows no preview rather than a wrong one.
+export function describeCron(expr: string): string | null {
+  if (!expr.trim()) return null;
+  try {
+    return cronstrue.toString(expr, { use24HourTimeFormat: true });
+  } catch {
+    return null;
+  }
 }
 
 function formatMs(ms: number): string {

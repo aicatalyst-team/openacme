@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   Save,
   Trash2,
@@ -31,8 +32,10 @@ import {
   STATUS_LABEL,
   STATUS_ORDER,
   STATUS_VARIANT,
+  describeCron,
   formatAbsoluteFromUnix,
   formatDate,
+  formatRelativeFromIso,
   formatRelativeFromUnix,
   type Comment,
   type Recurrence,
@@ -59,12 +62,8 @@ export interface TaskDetailPanelProps {
   onChange: (next: Task) => void;
   onSave: () => void;
   onDeleteClick: () => void;
-  /** When provided, renders a close X in the header (modal use). */
+  /** When provided, renders a close X in the header (deselects). */
   onClose?: () => void;
-  /** "modal" (default): window chrome — fixed toolbar, own scroll region,
-   *  sunk fixed footer. "pane": page furniture — one scroll flow at the
-   *  shared content measure, header/footer as in-flow ruled blocks. */
-  variant?: "modal" | "pane";
 }
 
 
@@ -79,9 +78,7 @@ export function TaskDetailPanel({
   onSave,
   onDeleteClick,
   onClose,
-  variant = "modal",
 }: TaskDetailPanelProps) {
-  const pane = variant === "pane";
   const titleByDepId = useMemo(
     () => new Map(tasks.map((t) => [t.id, t.title])),
     [tasks]
@@ -104,15 +101,10 @@ export function TaskDetailPanel({
   const shortSession = sessionId ? sessionId.slice(0, 8) : null;
   const assigneeKnown = agents.some((a) => a.id === draft.assignee);
 
-  const content = (
-    <>
-      {/* Header: modal = fixed toolbar row; pane = in-flow title block. */}
-      <div
-        className={cn(
-          "flex items-center justify-between gap-3 border-b border-paper-rule",
-          pane ? "pb-3" : "shrink-0 px-4 py-2"
-        )}
-      >
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-5">
+      <div className="mx-auto w-full max-w-3xl">
+      <div className="flex items-center justify-between gap-3 border-b border-paper-rule pb-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
             Task
@@ -158,19 +150,15 @@ export function TaskDetailPanel({
         </div>
       </div>
 
-      {/* Body: modal owns its scroll; pane flows with the page scroll. */}
-      <div
-        className={cn(
-          "space-y-5",
-          pane ? "py-5" : "min-h-0 flex-1 overflow-y-auto px-5 py-4"
-        )}
-      >
+      <div className="space-y-5 py-5">
         <div className="space-y-1.5">
           <Label htmlFor="title">Title</Label>
+          {/* The task's one real heading — give it a heading's scale. */}
           <Input
             id="title"
             value={draft.title}
             onChange={(e) => onChange({ ...draft, title: e.target.value })}
+            className="h-10 text-base font-semibold md:text-lg"
           />
         </div>
 
@@ -203,8 +191,8 @@ export function TaskDetailPanel({
               onChange={(id) => onChange({ ...draft, assignee: id })}
             />
             {!assigneeKnown && draft.assignee && (
-              <p className="font-mono text-[11px] text-ink-faint">
-                Current assignee no longer exists — pick a known agent.
+              <p className="text-xs text-destructive">
+                Current assignee no longer exists. Pick a known agent.
               </p>
             )}
           </div>
@@ -264,13 +252,8 @@ export function TaskDetailPanel({
         />
       </div>
 
-      {/* Audit metadata: modal = fixed sunk footer; pane = closing ruled block. */}
-      <div
-        className={cn(
-          "grid grid-cols-[auto_1fr_auto_1fr] items-baseline gap-x-5 gap-y-1 border-t border-paper-rule font-mono text-[12px] tabular-nums",
-          pane ? "pt-3" : "shrink-0 bg-paper-sunk px-5 py-3"
-        )}
-      >
+      {/* Audit metadata: closing ruled block. */}
+      <div className="grid grid-cols-[auto_1fr_auto_1fr] items-baseline gap-x-5 gap-y-1 border-t border-paper-rule pt-3 font-mono text-[12px] tabular-nums">
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
           By
         </span>
@@ -289,17 +272,26 @@ export function TaskDetailPanel({
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
           Created
         </span>
-        <span className="text-ink-soft">{formatDate(selected.created_at)}</span>
+        <span className="text-ink-soft" title={formatDate(selected.created_at)}>
+          {formatRelativeFromIso(selected.created_at)}
+        </span>
         <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
           Updated
         </span>
-        <span className="text-ink-soft">{formatDate(selected.updated_at)}</span>
+        <span className="text-ink-soft" title={formatDate(selected.updated_at)}>
+          {formatRelativeFromIso(selected.updated_at)}
+        </span>
         {selected.closed_at && (
           <>
             <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
               Closed
             </span>
-            <span className="text-ink-soft">{formatDate(selected.closed_at)}</span>
+            <span
+              className="text-ink-soft"
+              title={formatDate(selected.closed_at)}
+            >
+              {formatRelativeFromIso(selected.closed_at)}
+            </span>
           </>
         )}
         {selected.depends_on.length > 0 && (
@@ -337,17 +329,9 @@ export function TaskDetailPanel({
         )}
       </div>
 
-    </>
-  );
-
-  if (pane) {
-    return (
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-5">
-        <div className="mx-auto w-full max-w-3xl">{content}</div>
       </div>
-    );
-  }
-  return content;
+    </div>
+  );
 }
 
 /**
@@ -415,7 +399,17 @@ function ActivityTimeline({
         const { comment } = (await r.json()) as { comment: Comment };
         setComments((prev) => [...prev, comment]);
         setDraftBody("");
+      } else {
+        const err = (await r.json().catch(() => ({}))) as {
+          error?: string;
+          message?: string;
+        };
+        toast.error(
+          err.message ?? err.error ?? `Comment failed (HTTP ${r.status})`
+        );
       }
+    } catch {
+      toast.error("Comment failed: network error");
     } finally {
       setPosting(false);
     }
@@ -769,7 +763,12 @@ function EventDescription({
       return (
         <span>
           run {runs ?? "?"} complete
-          {next && <span className="text-ink-faint"> — next fire {next}</span>}
+          {next && (
+            <span className="text-ink-faint" title={formatDate(next)}>
+              {" "}
+              · next fire {formatRelativeFromIso(next)}
+            </span>
+          )}
         </span>
       );
     }
@@ -801,7 +800,7 @@ function Composer({
         value={draftBody}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKey}
-        placeholder="Leave a comment — markdown supported"
+        placeholder="Leave a comment (markdown supported)"
         rows={3}
       />
       <div className="flex items-center justify-between gap-3">
@@ -870,6 +869,7 @@ function AgentCombobox({
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
 
   const selected = agents.find((a) => a.id === value) ?? null;
 
@@ -938,12 +938,19 @@ function AgentCombobox({
         type="button"
         id="assignee"
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && open) {
+            e.preventDefault();
+            setOpen(false);
+          }
+        }}
         className={cn(
           "flex h-9 w-full items-center justify-between gap-2 border border-paper-rule bg-paper px-3 text-left text-sm text-ink outline-none transition-colors hover:bg-paper-sunk focus-visible:border-plot-red",
           !selected && "text-ink-faint"
         )}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-controls={open ? listboxId : undefined}
       >
         {selected ? (
           <span className="flex min-w-0 items-center gap-2">
@@ -973,10 +980,24 @@ function AgentCombobox({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onKey}
               placeholder="Search agents…"
+              role="combobox"
+              aria-expanded={open}
+              aria-controls={listboxId}
+              aria-autocomplete="list"
+              aria-activedescendant={
+                filtered.length > 0
+                  ? `${listboxId}-opt-${highlight}`
+                  : undefined
+              }
               className="h-7 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
             />
           </div>
-          <div ref={listRef} className="max-h-56 overflow-y-auto py-1" role="listbox">
+          <div
+            ref={listRef}
+            id={listboxId}
+            className="max-h-56 overflow-y-auto py-1"
+            role="listbox"
+          >
             {filtered.length === 0 ? (
               <div className="px-3 py-3 text-center font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
                 No matches
@@ -989,6 +1010,7 @@ function AgentCombobox({
                   <button
                     key={a.id}
                     type="button"
+                    id={`${listboxId}-opt-${i}`}
                     role="option"
                     aria-selected={isSel}
                     onMouseEnter={() => setHighlight(i)}
@@ -1051,6 +1073,7 @@ function SessionIdField({
           <button
             type="button"
             onClick={onUnbind}
+            title="Detach this session. A fresh one is assigned on the next run."
             className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint transition-colors hover:text-plot-red focus-visible:outline focus-visible:outline-1 focus-visible:outline-plot-red"
           >
             <Unlink className="size-3" />
@@ -1058,8 +1081,8 @@ function SessionIdField({
           </button>
         </div>
       ) : (
-        <div className="flex h-9 items-center border border-dashed border-paper-rule bg-paper px-3 font-mono text-[12px] text-ink-faint">
-          unbound — scheduler will allocate on next ready tick
+        <div className="flex h-9 items-center border border-dashed border-paper-rule bg-paper px-3 text-sm text-ink-faint">
+          No session yet. One is assigned when the task next runs.
         </div>
       )}
     </div>
@@ -1151,6 +1174,9 @@ function RecurrenceEditor({
               onChange={(e) => onChange({ ...value, expr: e.target.value })}
               className="font-mono"
             />
+            <p className="text-xs text-ink-faint">
+              {describeCron(value.expr) ?? "Unrecognized expression"}
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="rec-tz">Timezone</Label>
@@ -1205,7 +1231,7 @@ function RecurrenceEditor({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rec-count">Count cap</Label>
+              <Label htmlFor="rec-count">Max runs</Label>
               <Input
                 id="rec-count"
                 type="number"
@@ -1235,10 +1261,10 @@ function RecurrenceEditor({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="fresh">
-                  Fresh — new session each fire
+                  Fresh: new session each run
                 </SelectItem>
                 <SelectItem value="reuse">
-                  Reuse — continue same session (context accumulates)
+                  Reuse: continue the same session (context accumulates)
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -1255,13 +1281,23 @@ function RecurrenceEditor({
               <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
                 Last run
               </div>
-              <div className="text-ink-soft">{lastRunAt ? formatDate(lastRunAt) : "—"}</div>
+              <div
+                className="text-ink-soft"
+                title={lastRunAt ? formatDate(lastRunAt) : undefined}
+              >
+                {lastRunAt ? formatRelativeFromIso(lastRunAt) : "—"}
+              </div>
             </div>
             <div>
               <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
                 Next fire
               </div>
-              <div className="text-ink-soft">{nextStartAt ? formatDate(nextStartAt) : "—"}</div>
+              <div
+                className="text-ink-soft"
+                title={nextStartAt ? formatDate(nextStartAt) : undefined}
+              >
+                {nextStartAt ? formatRelativeFromIso(nextStartAt) : "—"}
+              </div>
             </div>
           </div>
         </>
@@ -1308,7 +1344,7 @@ function IntervalRow({
           </SelectContent>
         </Select>
       </div>
-      <p className="font-mono text-[11px] text-ink-faint">
+      <p className="text-xs text-ink-faint">
         Minimum 1 minute. Server enforces this floor.
       </p>
     </div>

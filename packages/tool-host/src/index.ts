@@ -1,5 +1,11 @@
 export { ToolHostManager, type ToolHostManagerOptions } from "./manager.js";
 export {
+  hashMcpConfig,
+  loadMcpDiscoveryCache,
+  saveMcpDiscoveryCache,
+  deleteMcpDiscoveryCache,
+} from "./discovery-cache.js";
+export {
   WireContextSchema,
   DaemonMessageSchema,
   WorkerMessageSchema,

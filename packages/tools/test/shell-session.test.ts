@@ -6,6 +6,8 @@ import {
   ShellSession,
   closeAllShellSessions,
   getShellSession,
+  setShellLimitsForTest,
+  sweepShellSessionsForTest,
 } from "../src/internal/shell-session.js";
 
 // Real bash-subprocess persistence: `cd`, env vars, shell functions all
@@ -112,6 +114,70 @@ describe("ShellSession — per-session persistence", () => {
       const c = getShellSession("agent-1", "session-2", ws);
       expect(c).not.toBe(a);
     } finally {
+      closeAllShellSessions();
+      await fs.rm(ws, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("shell session reaping", () => {
+  it("idle sweep kills the bash but the next call respawns at the last cwd", async () => {
+    const ws = await fs.mkdtemp(path.join(os.tmpdir(), "openacme-ws-"));
+    await fs.mkdir(path.join(ws, "sub"));
+    try {
+      const s = getShellSession("agent-1", "session-1", ws);
+      await s.exec("cd sub", 5000);
+      expect(s.live).toBe(true);
+
+      sweepShellSessionsForTest(Date.now() + 16 * 60_000);
+      expect(s.live).toBe(false);
+      // Entry survives the sweep — same instance, cwd remembered.
+      expect(getShellSession("agent-1", "session-1", ws)).toBe(s);
+
+      const r = await s.exec("pwd", 5000);
+      expect(r.exitCode).toBe(0);
+      expect(r.cwd.endsWith("/sub")).toBe(true);
+    } finally {
+      closeAllShellSessions();
+      await fs.rm(ws, { recursive: true, force: true });
+    }
+  });
+
+  it("busy shells are not reaped by the idle sweep", async () => {
+    const ws = await fs.mkdtemp(path.join(os.tmpdir(), "openacme-ws-"));
+    try {
+      const s = getShellSession("agent-1", "session-1", ws);
+      const running = s.exec("sleep 0.5; echo done", 5000);
+      sweepShellSessionsForTest(Date.now() + 16 * 60_000);
+      expect(s.live).toBe(true);
+      const r = await running;
+      expect(r.exitCode).toBe(0);
+      expect(r.output).toContain("done");
+    } finally {
+      closeAllShellSessions();
+      await fs.rm(ws, { recursive: true, force: true });
+    }
+  });
+
+  it("live cap suspends the least-recently-used shell", async () => {
+    const ws = await fs.mkdtemp(path.join(os.tmpdir(), "openacme-ws-"));
+    const prev = setShellLimitsForTest({ maxLiveShells: 2 });
+    try {
+      const a = getShellSession("agent-1", "s-a", ws);
+      await a.exec("true", 5000);
+      const b = getShellSession("agent-1", "s-b", ws);
+      await b.exec("true", 5000);
+      expect(a.live).toBe(true);
+      expect(b.live).toBe(true);
+
+      const c = getShellSession("agent-1", "s-c", ws);
+      await c.exec("true", 5000);
+      // a was the least recently used live shell — suspended for c.
+      expect(a.live).toBe(false);
+      expect(b.live).toBe(true);
+      expect(c.live).toBe(true);
+    } finally {
+      setShellLimitsForTest(prev);
       closeAllShellSessions();
       await fs.rm(ws, { recursive: true, force: true });
     }
