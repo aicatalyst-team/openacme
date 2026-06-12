@@ -100,35 +100,30 @@ export const Markdown = memo(function Markdown({
 }) {
   const linkified = useMemo<Components | null>(() => {
     if (!fileLinks || fileLinks.size === 0 || !onOpenFile) return null;
+    const BaseCode = components.code as React.ElementType;
     return {
       ...components,
       code: ({ className, children: codeChildren, ...rest }) => {
         const isBlock = /language-/.test(className ?? "");
-        if (isBlock) {
-          return (
-            <code
-              className={`${className ?? ""} font-mono text-[0.85em]`}
-              {...rest}
-            >
-              {codeChildren}
-            </code>
-          );
-        }
-        const text = textOf(codeChildren);
+        const text = isBlock ? null : textOf(codeChildren);
         const target = text ? fileLinks.get(text) : undefined;
-        if (target) {
+        if (!target) {
           return (
-            <button
-              type="button"
-              onClick={() => onOpenFile(target)}
-              title={`Preview ${target.relPath}`}
-              className="cursor-pointer underline decoration-dotted underline-offset-2 transition-colors hover:text-plot-red"
-            >
-              <code {...rest}>{codeChildren}</code>
-            </button>
+            <BaseCode className={className} {...rest}>
+              {codeChildren}
+            </BaseCode>
           );
         }
-        return <code {...rest}>{codeChildren}</code>;
+        return (
+          <button
+            type="button"
+            onClick={() => onOpenFile(target)}
+            title={`Preview ${target.relPath}`}
+            className="cursor-pointer underline decoration-dotted underline-offset-2 transition-colors hover:text-plot-red"
+          >
+            <code {...rest}>{codeChildren}</code>
+          </button>
+        );
       },
     };
   }, [fileLinks, onOpenFile]);

@@ -23,7 +23,7 @@ export interface FsTreeResponse {
 }
 
 export interface FsStatHit {
-  kind: "agent" | "team";
+  kind: "agent" | "team" | "skill";
   ownerId: string;
   scope: FsScope;
   relPath: string;

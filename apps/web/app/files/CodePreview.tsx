@@ -51,14 +51,20 @@ let highlighterPromise: Promise<HighlighterCore> | null = null;
 const loadedLangs = new Set<string>();
 
 function getHighlighter(): Promise<HighlighterCore> {
-  highlighterPromise ??= createHighlighterCore({
-    themes: [
-      import("@shikijs/themes/github-light"),
-      import("@shikijs/themes/github-dark"),
-    ],
-    langs: [],
-    engine: createJavaScriptRegexEngine(),
-  });
+  if (!highlighterPromise) {
+    highlighterPromise = createHighlighterCore({
+      themes: [
+        import("@shikijs/themes/github-light"),
+        import("@shikijs/themes/github-dark"),
+      ],
+      langs: [],
+      engine: createJavaScriptRegexEngine(),
+    });
+    // A failed theme/core load must not poison the cache for the session.
+    highlighterPromise.catch(() => {
+      highlighterPromise = null;
+    });
+  }
   return highlighterPromise;
 }
 
