@@ -52,7 +52,9 @@ export function TaskListRow({
       {/* Same glanceable meta set as board cards — who, urgency,
           why-not-running. The rest lives in the detail pane. */}
       <div className="flex w-full flex-wrap gap-x-3 font-mono text-[11px] tabular-nums text-ink-faint">
+        <span>#{task.id}</span>
         <AgentRef id={task.assignee} />
+        {task.team && <span>{task.team}</span>}
         {task.due_at && (
           <span
             className={dueUrgencyClass(task.due_at)}

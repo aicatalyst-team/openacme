@@ -113,6 +113,41 @@ function KnownToolBlock({
   );
 }
 
+// ── ping_user callout ────────────────────────────────────────────────────────
+// Rendered by MessageBubble at the BOTTOM of the assistant message regardless
+// of where the call fired mid-turn. The ping is the agent's attention signal;
+// inline it drowns under whatever narration follows it.
+
+export function PingUserCallout({ part }: { part: ToolPart }) {
+  const msg = isObj(part.input) ? str(part.input.message) : undefined;
+  if (!msg) return <ToolBlock part={part} />;
+  const out = parseJsonish(part.output);
+  const err =
+    part.errorText && part.errorText !== "[interrupted]"
+      ? part.errorText
+      : out
+        ? str(out.error)
+        : undefined;
+  return (
+    <div className="border border-plot-red section-enter">
+      <div className="flex items-center gap-2 bg-plot-red/[0.06] px-3 py-1.5">
+        <Bell className="size-3.5 shrink-0 text-plot-red" aria-hidden />
+        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-plot-red">
+          Needs your input
+        </span>
+      </div>
+      <div className="border-t border-paper-rule px-3 py-2 text-sm leading-relaxed text-ink break-words">
+        <Markdown>{msg}</Markdown>
+      </div>
+      {err && (
+        <div className="border-t border-paper-rule px-3 py-2 font-mono text-[11px] leading-snug text-destructive whitespace-pre-wrap break-words">
+          {err}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Unknown tool: single row, click to reveal raw I/O ───────────────────────
 
 function UnknownToolBlock({

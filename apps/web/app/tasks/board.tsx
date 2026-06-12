@@ -96,10 +96,10 @@ export function TasksBoard({ tasks, selectedId, onPick, onMove }: TasksBoardProp
         handleDragEnd(e);
       }}
     >
-      {/* Columns stack vertically under md — a fixed 288px column already
-          overflows narrow phones, so the horizontal-scroll board is
-          desktop-only. */}
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 md:flex-row md:overflow-y-hidden md:overflow-x-auto">
+      {/* Columns stack vertically under md; md–xl keeps fixed-width columns
+          with horizontal scroll (five even columns would be ~130px at md);
+          at xl+ the columns split the viewport so the board fits one screen. */}
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 md:flex-row md:overflow-y-hidden md:overflow-x-auto xl:overflow-hidden">
         {STATUS_ORDER.map((status) => (
           <BoardColumn
             key={status}
@@ -135,7 +135,7 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex w-full shrink-0 flex-col border border-paper-rule bg-paper-sunk transition-colors md:w-72",
+        "flex w-full shrink-0 flex-col border border-paper-rule bg-paper-sunk transition-colors md:w-72 xl:w-auto xl:min-w-0 xl:flex-1",
         isOver && "border-plot-red bg-paper"
       )}
     >
@@ -240,6 +240,7 @@ function BoardCard({
         {/* Card meta stays glanceable: who, urgency, why-not-running.
             Team, past starts, and comment counts live in the detail pane. */}
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] tabular-nums text-ink-faint">
+          <span>#{task.id}</span>
           <AgentRef id={task.assignee} />
           {task.due_at && (
             <span
