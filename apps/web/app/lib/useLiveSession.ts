@@ -86,6 +86,23 @@ export function useLiveSession(
     let controller: ReadableStreamDefaultController<unknown> | null = null;
     let currentMessageId: string | null = null;
 
+    // Coalesce assembler emits to one React commit per animation frame.
+    // Word-cadence deltas arrive faster than 60fps; committing each one
+    // re-parses the streaming message's markdown and re-renders the
+    // thread, which is the jank. Only the latest snapshot matters.
+    let pendingUpsert: OpenAcmeUIMessage | null = null;
+    let upsertRaf = 0;
+    const flushUpsert = () => {
+      upsertRaf = 0;
+      const m = pendingUpsert;
+      pendingUpsert = null;
+      if (m) setMessagesRef.current?.((prev) => upsertById(prev, m));
+    };
+    const queueUpsert = (m: OpenAcmeUIMessage) => {
+      pendingUpsert = m;
+      if (!upsertRaf) upsertRaf = requestAnimationFrame(flushUpsert);
+    };
+
     const closeCurrent = () => {
       try {
         controller?.close();
@@ -111,7 +128,7 @@ export function useLiveSession(
             // structuredClone is performed inside readUIMessageStream
             // per emit, so each yielded `message` is a fresh snapshot —
             // safe to hand to React state.
-            setMessagesRef.current?.((prev) => upsertById(prev, message));
+            queueUpsert(message);
           }
         } catch {
           /* stream closed — expected on turn boundary / unmount */
@@ -181,6 +198,10 @@ export function useLiveSession(
         try {
           const env = JSON.parse(e.data) as { messages?: OpenAcmeUIMessage[] };
           if (!env.messages?.length) return;
+          // Drain any frame-buffered chunk snapshot first so a stale rAF
+          // can't fire after this and overwrite the canonical message.
+          if (upsertRaf) cancelAnimationFrame(upsertRaf);
+          flushUpsert();
           setMessagesRef.current?.((prev) => {
             let out = prev;
             for (const m of env.messages!) out = upsertById(out, m);
@@ -252,6 +273,8 @@ export function useLiveSession(
       }
       es.close();
       closeCurrent();
+      if (upsertRaf) cancelAnimationFrame(upsertRaf);
+      pendingUpsert = null;
     };
   }, [sessionId]);
 
