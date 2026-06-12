@@ -1376,6 +1376,73 @@ function MessageHeader({
 // Memoized: `upsertById` in useLiveSession preserves identity for
 // untouched messages, so streaming chunks only re-render the one
 // message they touch instead of the whole thread.
+// Paced text reveal for the streaming tail (hermes-style "smooth drain").
+// Providers emit multi-word deltas at irregular intervals; rendering them
+// verbatim makes text land in visible jumps. Instead, reveal buffered text
+// at a bounded rate per frame: a floor rate when the backlog is small, a
+// proportional rate so bursts drain within ~DRAIN_WINDOW_MS, and a snap
+// for huge backlogs (late-join catch-up) so we never type out megabytes.
+const MIN_CHARS_PER_MS = 0.08;
+const DRAIN_WINDOW_MS = 350;
+const SNAP_BACKLOG_CHARS = 3000;
+
+function useSmoothText(text: string, enabled: boolean): string {
+  // Fractional reveal progress in chars; ref is the source of truth, the
+  // state setter only forces re-render at frame cadence. Infinity marks
+  // "never streamed" (history load) — rendered verbatim, no animation.
+  // Once a reveal starts it drains to completion at pace even after
+  // `enabled` flips false, so end-of-turn doesn't dump the backlog.
+  const progress = useRef(enabled ? 0 : Number.POSITIVE_INFINITY);
+  const [, force] = useState(0);
+  const animating =
+    progress.current !== Number.POSITIVE_INFINITY &&
+    progress.current < text.length;
+  useEffect(() => {
+    if (!animating) return;
+    if (text.length - progress.current > SNAP_BACKLOG_CHARS) {
+      progress.current = text.length - SNAP_BACKLOG_CHARS;
+    }
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(64, now - last);
+      last = now;
+      const backlog = text.length - progress.current;
+      const rate = Math.max(MIN_CHARS_PER_MS, backlog / DRAIN_WINDOW_MS);
+      progress.current = Math.min(text.length, progress.current + dt * rate);
+      force((n) => n + 1);
+      if (progress.current < text.length) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [text, animating]);
+  if (!animating) return text;
+  return text.slice(0, Math.floor(progress.current));
+}
+
+function StreamingText({
+  text,
+  active,
+  fileLinks,
+  onOpenFile,
+}: {
+  text: string;
+  /** True only for the streaming message's last text part. */
+  active: boolean;
+  fileLinks?: Map<string, FileLinkTarget>;
+  onOpenFile?: (target: FileLinkTarget) => void;
+}) {
+  const shown = useSmoothText(text, active);
+  return (
+    <>
+      <Markdown fileLinks={fileLinks} onOpenFile={onOpenFile}>
+        {shown}
+      </Markdown>
+      {active && <span className="cursor-stream" aria-hidden />}
+    </>
+  );
+}
+
 const MessageBubble = memo(function MessageBubble({
   message,
   agent,
@@ -1544,12 +1611,12 @@ const MessageBubble = memo(function MessageBubble({
             if (!text) return null;
             return (
               <div key={i} className="text-sm leading-relaxed text-ink break-words">
-                <Markdown fileLinks={fileLinks} onOpenFile={onOpenFile}>
-                  {text}
-                </Markdown>
-                {isStreaming && i === lastTextIdx && (
-                  <span className="cursor-stream" aria-hidden />
-                )}
+                <StreamingText
+                  text={text}
+                  active={isStreaming && i === lastTextIdx}
+                  fileLinks={fileLinks}
+                  onOpenFile={onOpenFile}
+                />
               </div>
             );
           }

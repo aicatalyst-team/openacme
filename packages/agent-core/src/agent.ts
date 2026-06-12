@@ -1,7 +1,6 @@
 import {
   generateText,
   readUIMessageStream,
-  smoothStream,
   streamText,
   stepCountIs,
   type ToolSet,
@@ -415,18 +414,6 @@ export class Agent {
       messages,
       tools: tools as Parameters<typeof streamText>[0]["tools"],
       stopWhen: opts.stopWhen ?? stepCountIs(this.config.maxSteps),
-      // Providers emit multi-word deltas at irregular intervals; re-chunk
-      // to word cadence so streamed text reveals smoothly instead of jumping.
-      // Skipped for autonomous turns — nobody watches them, and pacing the
-      // reveal would pad turn wall-clock toward the dispatcher timeout.
-      ...(opts.usage?.kind === "autonomous"
-        ? {}
-        : {
-            experimental_transform: smoothStream({
-              delayInMs: 12,
-              chunking: "word",
-            }),
-          }),
       maxOutputTokens: this.config.maxOutputTokens,
       abortSignal: opts.signal,
       prepareStep: opts.prepareStep,
