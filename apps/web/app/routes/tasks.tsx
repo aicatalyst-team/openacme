@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/app/components/ui/dialog";
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import { cn } from "@/app/lib/utils";
 import { TasksBoard } from "../tasks/board";
 import { TaskDetailPanel, type AgentOption } from "../tasks/detail";
@@ -374,12 +375,7 @@ function TasksPage() {
         ) : (
           <div className="flex flex-1 overflow-hidden">
             {viewMode === "board" ? (
-              <div
-                className={cn(
-                  "min-w-0 flex-1 flex-col overflow-hidden",
-                  selected && draft ? "hidden md:flex" : "flex"
-                )}
-              >
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                 <TasksBoard
                   tasks={tasks}
                   selectedId={selected?.id ?? null}
@@ -420,28 +416,9 @@ function TasksPage() {
             )}
 
             {/* One detail surface for both modes: the routed pane. Board
-                shows it as a bordered side panel only while a task is
-                selected; list keeps it resident with a placeholder. */}
-            {viewMode === "board" ? (
-              selected &&
-              draft && (
-                <section className="flex w-full shrink-0 flex-col overflow-hidden border-paper-rule md:w-[30rem] md:border-l lg:w-[38rem] xl:w-[44rem]">
-                  <BackToTasks onClick={closeDetail} />
-                  <TaskDetailPanel
-                    selected={selected}
-                    draft={draft}
-                    saving={saving}
-                    dirty={dirty}
-                    agents={agents}
-                    tasks={tasks}
-                    onChange={setDraft}
-                    onSave={() => void save()}
-                    onDeleteClick={() => setConfirmDelete(selected.id)}
-                    onClose={closeDetail}
-                  />
-                </section>
-              )
-            ) : (
+                opens it as a right-anchored sheet over the columns (the
+                board keeps its full width); list keeps it resident. */}
+            {viewMode === "list" && (
               <section
                 className={cn(
                   "flex flex-1 flex-col overflow-hidden",
@@ -482,6 +459,44 @@ function TasksPage() {
             )}
           </div>
         )}
+
+        {/* Board mode: detail as a full-height right sheet over the
+            columns. Escape / overlay-click route through closeDetail, so
+            the dirty guard still applies. Mobile: full takeover above
+            the bottom tab bar, like the rest of the app. */}
+        <Dialog
+          open={viewMode === "board" && !!selected && !!draft}
+          onOpenChange={(open) => {
+            if (!open) closeDetail();
+          }}
+        >
+          <DialogContent
+            showCloseButton={false}
+            className="left-0 right-0 top-0 h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom))] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden border-0 border-l border-paper-rule data-[state=closed]:slide-out-to-right-6 data-[state=open]:slide-in-from-right-6 sm:max-w-none md:left-auto md:h-dvh md:max-h-none md:w-[min(46rem,92vw)]"
+          >
+            <VisuallyHidden.Root>
+              <DialogTitle>{selected?.title ?? "Task"}</DialogTitle>
+              <DialogDescription>
+                Edit task details: title, status, assignee, schedule,
+                recurrence, and body.
+              </DialogDescription>
+            </VisuallyHidden.Root>
+            {selected && draft && (
+              <TaskDetailPanel
+                selected={selected}
+                draft={draft}
+                saving={saving}
+                dirty={dirty}
+                agents={agents}
+                tasks={tasks}
+                onChange={setDraft}
+                onSave={() => void save()}
+                onDeleteClick={() => setConfirmDelete(selected.id)}
+                onClose={closeDetail}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={!!pendingNav}
