@@ -1437,12 +1437,16 @@ function StreamingText({
   onOpenFile?: (target: FileLinkTarget) => void;
 }) {
   const shown = useSmoothText(text, active);
+  // Cursor tracks the reveal, not the wire: it stays up while leftover
+  // backlog drains after the turn goes idle.
   return (
     <>
       <Markdown fileLinks={fileLinks} onOpenFile={onOpenFile}>
         {shown}
       </Markdown>
-      {active && <span className="cursor-stream" aria-hidden />}
+      {(active || shown.length < text.length) && (
+        <span className="cursor-stream" aria-hidden />
+      )}
     </>
   );
 }

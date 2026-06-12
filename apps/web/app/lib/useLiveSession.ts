@@ -90,6 +90,8 @@ export function useLiveSession(
     // Word-cadence deltas arrive faster than 60fps; committing each one
     // re-parses the streaming message's markdown and re-renders the
     // thread, which is the jank. Only the latest snapshot matters.
+    // Single slot — relies on the server streaming at most one assistant
+    // message per session at a time; interleaved ids would drop snapshots.
     let pendingUpsert: OpenAcmeUIMessage | null = null;
     let upsertRaf = 0;
     const flushUpsert = () => {

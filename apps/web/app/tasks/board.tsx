@@ -96,9 +96,10 @@ export function TasksBoard({ tasks, selectedId, onPick, onMove }: TasksBoardProp
         handleDragEnd(e);
       }}
     >
-      {/* Columns stack vertically under md; at md+ all five columns split
-          the viewport width evenly so the board fits one screen. */}
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 md:flex-row md:overflow-hidden">
+      {/* Columns stack vertically under md; md–xl keeps fixed-width columns
+          with horizontal scroll (five even columns would be ~130px at md);
+          at xl+ the columns split the viewport so the board fits one screen. */}
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 md:flex-row md:overflow-y-hidden md:overflow-x-auto xl:overflow-hidden">
         {STATUS_ORDER.map((status) => (
           <BoardColumn
             key={status}
@@ -134,7 +135,7 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex w-full shrink-0 flex-col border border-paper-rule bg-paper-sunk transition-colors md:min-w-0 md:flex-1",
+        "flex w-full shrink-0 flex-col border border-paper-rule bg-paper-sunk transition-colors md:w-72 xl:w-auto xl:min-w-0 xl:flex-1",
         isOver && "border-plot-red bg-paper"
       )}
     >
