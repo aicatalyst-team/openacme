@@ -472,7 +472,7 @@ function TasksPage() {
         >
           <DialogContent
             showCloseButton={false}
-            className="left-0 right-0 top-0 h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom))] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden border-0 border-l border-paper-rule data-[state=closed]:slide-out-to-right-6 data-[state=open]:slide-in-from-right-6 sm:max-w-none md:left-auto md:h-dvh md:max-h-none md:w-[min(46rem,92vw)]"
+            className="left-0 right-0 top-0 h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom))] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden border-0 border-l border-paper-rule data-[state=closed]:slide-out-to-right-6 data-[state=open]:slide-in-from-right-6 sm:max-w-none md:left-auto md:h-dvh md:max-h-none md:w-[min(54rem,94vw)]"
           >
             <VisuallyHidden.Root>
               <DialogTitle>{selected?.title ?? "Task"}</DialogTitle>
