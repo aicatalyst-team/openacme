@@ -5,6 +5,14 @@
  * `(agentId, sessionId)` pair, lazily spawned, killed at session
  * teardown / daemon shutdown.
  *
+ * Sessions are unbounded (nothing closes a chat session), so the
+ * registry self-limits: bash processes idle past IDLE_TTL_MS are killed
+ * by a sweep timer, and an LRU cap bounds live processes per process
+ * (one worker per agent under the tool-host, so effectively per agent).
+ * The ShellSession object survives the kill — it remembers the last
+ * cwd, so the next call respawns there; only in-shell env state is
+ * lost. Tracked-but-dead entries are themselves pruned LRU past a cap.
+ *
  * Protocol: each `exec()` writes the user command to a temp `.sh` file,
  * then writes `. <tmpfile>; printf "<SENTINEL>=$?=$(pwd)\n"` to bash's
  * stdin. Output is captured up to the unique sentinel line, which
@@ -47,14 +55,29 @@ export class ShellSession {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private pending: Pending | null = null;
   private dead = false;
+  // Last cwd reported by a completed command; respawns land here so an
+  // idle-reaped shell resumes where the agent left off.
+  private currentCwd: string;
+  lastUsedAt = Date.now();
 
-  constructor(public readonly initialCwd: string) {}
+  constructor(public readonly initialCwd: string) {
+    this.currentCwd = initialCwd;
+  }
+
+  get busy(): boolean {
+    return this.pending !== null;
+  }
+
+  /** True while a bash subprocess is attached. */
+  get live(): boolean {
+    return this.proc !== null;
+  }
 
   private spawnBash(): ChildProcessWithoutNullStreams {
     // --norc / --noprofile keep bash predictable across user environments
     // — no surprise aliases from a developer's ~/.bashrc bleeding in.
     const proc = spawn("/bin/bash", ["--norc", "--noprofile"], {
-      cwd: this.initialCwd,
+      cwd: fs.existsSync(this.currentCwd) ? this.currentCwd : this.initialCwd,
       env: { ...process.env, PS1: "" },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -89,6 +112,7 @@ export class ShellSession {
 
     const exitCode = parseInt(m[1]!, 10);
     const cwd = m[2]!;
+    if (cwd) this.currentCwd = cwd;
     const output = this.pending.buf.slice(0, m.index!);
 
     const pending = this.pending;
@@ -123,6 +147,7 @@ export class ShellSession {
         "Shell session is busy — concurrent shell calls are not supported per session."
       );
     }
+    this.lastUsedAt = Date.now();
 
     if (!this.proc || this.dead) {
       this.dead = false;
@@ -189,8 +214,69 @@ export class ShellSession {
   }
 }
 
-// Per-(agentId, sessionId) registry.
+// Per-(agentId, sessionId) registry, bounded by idle TTL + LRU caps.
 const sessions = new Map<string, ShellSession>();
+
+let IDLE_TTL_MS = 15 * 60_000;
+const SWEEP_INTERVAL_MS = 60_000;
+// Ceiling on concurrently-live bash subprocesses in this process.
+let MAX_LIVE_SHELLS = 32;
+// Ceiling on tracked (possibly dead) entries — each remembers a cwd.
+const MAX_TRACKED_SESSIONS = 2048;
+
+let sweepTimer: NodeJS.Timeout | null = null;
+
+function sweep(now: number): void {
+  let anyLive = false;
+  for (const s of sessions.values()) {
+    if (s.live && !s.busy && now - s.lastUsedAt > IDLE_TTL_MS) {
+      // Kill the bash but keep the entry — it remembers the cwd and
+      // respawns there on the session's next shell call.
+      s.close();
+    }
+    if (s.live) anyLive = true;
+  }
+  if (!anyLive && sweepTimer) {
+    clearInterval(sweepTimer);
+    sweepTimer = null;
+  }
+}
+
+function ensureSweeper(): void {
+  if (sweepTimer) return;
+  sweepTimer = setInterval(() => sweep(Date.now()), SWEEP_INTERVAL_MS);
+  // The sweeper must never hold the process open.
+  sweepTimer.unref();
+}
+
+/** Kill the oldest non-busy live shells until under the cap. */
+function suspendLiveOverCap(): void {
+  const live = [...sessions.values()].filter((s) => s.live);
+  if (live.length < MAX_LIVE_SHELLS) return;
+  const idle = live
+    .filter((s) => !s.busy)
+    .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+  let excess = live.length - MAX_LIVE_SHELLS + 1;
+  for (const s of idle) {
+    if (excess <= 0) break;
+    s.close();
+    excess--;
+  }
+}
+
+/** Forget the oldest dead entries when the tracked map itself is full. */
+function pruneTrackedIfFull(): void {
+  if (sessions.size < MAX_TRACKED_SESSIONS) return;
+  const dead = [...sessions.entries()]
+    .filter(([, s]) => !s.live && !s.busy)
+    .sort(([, a], [, b]) => a.lastUsedAt - b.lastUsedAt);
+  let excess = sessions.size - MAX_TRACKED_SESSIONS + 1;
+  for (const [key] of dead) {
+    if (excess <= 0) break;
+    sessions.delete(key);
+    excess--;
+  }
+}
 
 export function getShellSession(
   agentId: string,
@@ -200,9 +286,14 @@ export function getShellSession(
   const key = `${agentId}:${sessionId}`;
   let s = sessions.get(key);
   if (!s) {
+    pruneTrackedIfFull();
     s = new ShellSession(initialCwd);
     sessions.set(key, s);
   }
+  // The caller is about to exec — make room under the live cap and make
+  // sure the sweeper runs while anything is (about to be) live.
+  suspendLiveOverCap();
+  ensureSweeper();
   return s;
 }
 
@@ -217,4 +308,22 @@ export function closeShellSession(agentId: string, sessionId: string): void {
 export function closeAllShellSessions(): void {
   for (const s of sessions.values()) s.close();
   sessions.clear();
+  if (sweepTimer) {
+    clearInterval(sweepTimer);
+    sweepTimer = null;
+  }
+}
+
+// Test seams.
+export function sweepShellSessionsForTest(now = Date.now()): void {
+  sweep(now);
+}
+export function setShellLimitsForTest(limits: {
+  idleTtlMs?: number;
+  maxLiveShells?: number;
+}): { idleTtlMs: number; maxLiveShells: number } {
+  const prev = { idleTtlMs: IDLE_TTL_MS, maxLiveShells: MAX_LIVE_SHELLS };
+  if (limits.idleTtlMs !== undefined) IDLE_TTL_MS = limits.idleTtlMs;
+  if (limits.maxLiveShells !== undefined) MAX_LIVE_SHELLS = limits.maxLiveShells;
+  return prev;
 }
