@@ -81,7 +81,13 @@ import {
   type ServerState,
   type ServerStatus,
 } from "@openacme/mcp-client";
-import type { McpServerDiscovery } from "@openacme/tool-host";
+import {
+  hashMcpConfig,
+  loadMcpDiscoveryCache,
+  saveMcpDiscoveryCache,
+  deleteMcpDiscoveryCache,
+  type McpServerDiscovery,
+} from "@openacme/tool-host";
 import {
   awaitLoopbackCallback,
   openBrowser,
@@ -178,11 +184,22 @@ export class AgentManager {
   private config: Config;
   private mcpClients = new Map<string, MCPClient>();
   /** Worker-run stdio MCP servers per agent: last discovery snapshot +
-   *  the daemon-side proxy tool names registered from it. */
+   *  the daemon-side proxy tool names registered from it. `fromCache`
+   *  marks snapshots served from the on-disk discovery cache (no worker
+   *  spawned yet) — verified against live discovery once a real worker
+   *  comes up. */
   private stdioMcp = new Map<
     string,
-    { discovery: McpServerDiscovery[]; toolNames: string[] }
+    {
+      discovery: McpServerDiscovery[];
+      toolNames: string[];
+      fromCache: boolean;
+      configHash: string;
+    }
   >();
+  /** Agents whose cache-served discovery was already refreshed against
+   *  a live worker this process. */
+  private stdioMcpRefreshed = new Set<string>();
   readonly skillRegistry: SkillRegistry;
 
   constructor(config: Config) {
@@ -445,6 +462,11 @@ export class AgentManager {
         if (!def) return {};
         return this.partitionServers(this.serversForAgent(def)).stdio;
       },
+      // Cache-served MCP discovery is a boot-time snapshot; once a real
+      // worker exists, verify it against live discovery.
+      onWorkerSpawned: (agentId) => {
+        void this.refreshStdioMcpAfterSpawn(agentId);
+      },
     });
     bindToolHost(this.toolHostManager);
 
@@ -666,6 +688,80 @@ export class AgentManager {
     this.stdioMcp.delete(id);
   }
 
+  private mcpDiscoveryCacheDir(): string {
+    return path.join(this.config.dataDir, "cache", "mcp-discovery");
+  }
+
+  /** Register daemon-side proxy entries (schema + routing only) for the
+   *  tools in a discovery snapshot; execution happens in the worker. */
+  private registerStdioMcpTools(discovery: McpServerDiscovery[]): string[] {
+    const toolNames: string[] = [];
+    for (const server of discovery) {
+      for (const tool of server.tools) {
+        const registryName = `mcp_${server.server}__${tool.name}`;
+        toolRegistry.register({
+          name: registryName,
+          toolset: `mcp-${server.server}`,
+          description:
+            tool.description ?? `Tool from MCP server '${server.server}'`,
+          parameters: jsonSchemaToZod(tool.inputSchema),
+          emoji: "🔌",
+          parallelSafe: true,
+          runtime: "worker",
+          handler: async () =>
+            JSON.stringify({
+              error: `MCP tool '${registryName}' requires the agent's tool-host worker`,
+            }),
+        });
+        toolNames.push(registryName);
+      }
+    }
+    return toolNames;
+  }
+
+  /** Cache-served discovery is a snapshot that can drift under an
+   *  unchanged config (e.g. an npx-latest server updating). Once a real
+   *  worker exists, re-discover and heal the registry + cache if the
+   *  schemas changed. One refresh per agent per process. */
+  private async refreshStdioMcpAfterSpawn(agentId: string): Promise<void> {
+    const entry = this.stdioMcp.get(agentId);
+    if (!entry || !entry.fromCache) return;
+    if (this.stdioMcpRefreshed.has(agentId)) return;
+    this.stdioMcpRefreshed.add(agentId);
+    try {
+      const discovery = await this.toolHostManager.discoverMcp(agentId);
+      saveMcpDiscoveryCache(
+        this.mcpDiscoveryCacheDir(),
+        agentId,
+        entry.configHash,
+        discovery
+      );
+      if (JSON.stringify(discovery) === JSON.stringify(entry.discovery)) {
+        this.stdioMcp.set(agentId, { ...entry, discovery, fromCache: false });
+        return;
+      }
+      for (const name of entry.toolNames) toolRegistry.deregister(name);
+      const toolNames = this.registerStdioMcpTools(discovery);
+      this.stdioMcp.set(agentId, {
+        discovery,
+        toolNames,
+        fromCache: false,
+        configHash: entry.configHash,
+      });
+      // Tool set changed — the cached Agent's prompt is stale.
+      this.agents.delete(agentId);
+      log.info(
+        { agentId },
+        "stdio MCP discovery refreshed after worker spawn; cached schemas were stale"
+      );
+    } catch (e) {
+      log.warn(
+        { err: e, agentId },
+        "post-spawn stdio MCP discovery refresh failed; keeping cached schemas"
+      );
+    }
+  }
+
   /**
    * Tear down and rebuild the MCP client for one agent. Called from
    * `initMCP` and agent CRUD. (No file watcher: editing `mcp.json`
@@ -694,6 +790,9 @@ export class AgentManager {
     // Restart the worker so its stdio MCP children come up under the
     // current config (the init payload is computed at spawn time).
     this.deregisterStdioMcp(id);
+    // Re-arm the post-spawn verification — a reinit means config may
+    // have changed and the next spawn should re-check cached schemas.
+    this.stdioMcpRefreshed.delete(id);
     await this.toolHostManager.stopWorker(id);
 
     const { stdio, url } = this.partitionServers(this.serversForAgent(def));
@@ -719,37 +818,36 @@ export class AgentManager {
     }
 
     if (Object.keys(stdio).length > 0) {
-      // Eager worker spawn: tool definitions must exist at prompt-build
-      // time, and only MCP discovery is dynamic. Failure-tolerant — a
-      // broken stdio server (or worker) must not block agent creation.
+      // Tool definitions must exist at prompt-build time, but discovery
+      // must not cost a worker per agent at boot — that made every agent
+      // always-on. Serve schemas from the on-disk cache while the stdio
+      // config is unchanged; the worker then spawns lazily on the first
+      // worker-runtime tool call, and cache-served discovery is verified
+      // live once it does (onWorkerSpawned). Failure-tolerant — a broken
+      // stdio server (or worker) must not block agent creation.
       try {
-        const discovery = await this.toolHostManager.discoverMcp(id);
-        const toolNames: string[] = [];
-        for (const server of discovery) {
-          for (const tool of server.tools) {
-            const registryName = `mcp_${server.server}__${tool.name}`;
-            toolRegistry.register({
-              name: registryName,
-              toolset: `mcp-${server.server}`,
-              description:
-                tool.description ??
-                `Tool from MCP server '${server.server}'`,
-              parameters: jsonSchemaToZod(tool.inputSchema),
-              emoji: "🔌",
-              parallelSafe: true,
-              // Execution happens in the worker, where the real MCP
-              // client registered the same name; this daemon-side entry
-              // is schema + routing only.
-              runtime: "worker",
-              handler: async () =>
-                JSON.stringify({
-                  error: `MCP tool '${registryName}' requires the agent's tool-host worker`,
-                }),
-            });
-            toolNames.push(registryName);
-          }
+        const configHash = hashMcpConfig(stdio);
+        const cached = loadMcpDiscoveryCache(
+          this.mcpDiscoveryCacheDir(),
+          id,
+          configHash
+        );
+        let discovery: McpServerDiscovery[];
+        let fromCache = false;
+        if (cached) {
+          discovery = cached;
+          fromCache = true;
+        } else {
+          discovery = await this.toolHostManager.discoverMcp(id);
+          saveMcpDiscoveryCache(
+            this.mcpDiscoveryCacheDir(),
+            id,
+            configHash,
+            discovery
+          );
         }
-        this.stdioMcp.set(id, { discovery, toolNames });
+        const toolNames = this.registerStdioMcpTools(discovery);
+        this.stdioMcp.set(id, { discovery, toolNames, fromCache, configHash });
       } catch (e) {
         log.warn(
           { err: e, agentId: id },
@@ -1268,6 +1366,8 @@ export class AgentManager {
     // and kill every worker so stale sandbox profiles don't linger.
     this.agents.clear();
     this.deregisterStdioMcp(id);
+    this.stdioMcpRefreshed.delete(id);
+    deleteMcpDiscoveryCache(this.mcpDiscoveryCacheDir(), id);
     await this.toolHostManager.stopAll();
 
     // Kill the agent's browser session BEFORE agentStore.delete blows away

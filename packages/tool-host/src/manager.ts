@@ -44,6 +44,10 @@ export interface ToolHostManagerOptions {
    *  worker so the server processes inherit the sandbox. Resolved at
    *  spawn time, same freshness rule as the policy. */
   stdioMcpServersFor?: (agentId: string) => Record<string, unknown>;
+  /** Fired after a worker becomes ready. Used by the daemon to refresh
+   *  cache-served MCP discovery once a real worker exists. Must not
+   *  throw; called synchronously after the ready handshake. */
+  onWorkerSpawned?: (agentId: string) => void;
 }
 
 // Env keys that never reach the worker (and therefore never reach the
@@ -349,6 +353,11 @@ export class ToolHostManager implements ToolHostDispatcher {
     await ready;
     this.instances.set(agentId, handle);
     log.info({ agentId, pid: proc.pid }, "tool-host worker started");
+    try {
+      this.opts.onWorkerSpawned?.(agentId);
+    } catch (e) {
+      log.warn({ err: e, agentId }, "onWorkerSpawned hook failed");
+    }
     return handle;
   }
 
