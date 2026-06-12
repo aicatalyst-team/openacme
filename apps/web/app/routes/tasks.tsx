@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { Kanban, Rows3 } from "lucide-react";
@@ -18,7 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/app/components/ui/dialog";
-import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import { cn } from "@/app/lib/utils";
 import { TasksBoard } from "../tasks/board";
 import { TaskDetailPanel, type AgentOption } from "../tasks/detail";
@@ -26,6 +25,7 @@ import { TaskListRow } from "../tasks/row";
 import {
   STATUS_LABEL,
   STATUS_ORDER,
+  formatRelativeFromIso,
   type Task,
   type TaskStatus,
 } from "../tasks/types";
@@ -37,6 +37,8 @@ export const Route = createFileRoute("/tasks")({
   validateSearch: z.object({ id: z.coerce.string().optional() }),
   component: TasksPage,
 });
+
+const POLL_MS = 10_000;
 
 function TasksPage() {
   const navigate = useNavigate();
@@ -51,27 +53,43 @@ function TasksPage() {
   const [confirmDeleteMode, setConfirmDeleteMode] = useState<
     "simple" | "cascade"
   >("simple");
-  const [viewMode, setViewMode] = useState<ViewMode>("board");
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  // Pending navigation parked behind the discard-unsaved-changes dialog.
+  const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "board";
     const stored = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
-    if (stored === "list" || stored === "board") setViewMode(stored);
-  }, []);
+    return stored === "list" || stored === "board" ? stored : "board";
+  });
+
+  // Render-synced mirror of `dirty` for the poll callbacks (set below,
+  // once dirty is computed).
+  const dirtyRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
   }, [viewMode]);
 
+  // Agents move tasks while this page is open — poll the list and refetch
+  // on window focus so the board tracks the workforce, not the last reload.
   useEffect(() => {
     const ctrl = new AbortController();
-    void load(ctrl.signal);
+    void load(ctrl.signal, true);
     void loadAgents(ctrl.signal);
-    return () => ctrl.abort();
+    const tick = window.setInterval(
+      () => void load(ctrl.signal, false),
+      POLL_MS
+    );
+    const onFocus = () => void load(ctrl.signal, false);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      ctrl.abort();
+      window.clearInterval(tick);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
-  // URL → selection state. /tasks/<id> loads that task; /tasks resets.
+  // URL → selection state. /tasks?id=<id> loads that task; /tasks resets.
   useEffect(() => {
     if (urlId) {
       void loadOne(urlId);
@@ -81,18 +99,19 @@ function TasksPage() {
     }
   }, [urlId]);
 
-  const load = async (signal?: AbortSignal) => {
+  const load = async (signal: AbortSignal | undefined, initial: boolean) => {
     try {
-      setLoading(true);
+      if (initial) setLoading(true);
       const res = await fetch(`${API_BASE}/api/tasks`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as { tasks: Task[] };
       setTasks(json.tasks);
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
-      toast.error("Failed to load tasks");
+      // Poll failures keep stale data on screen; only the first load toasts.
+      if (initial) toast.error("Failed to load tasks");
     } finally {
-      setLoading(false);
+      if (initial) setLoading(false);
     }
   };
 
@@ -108,17 +127,39 @@ function TasksPage() {
     }
   };
 
-  const loadOne = async (id: string) => {
+  // Abort the in-flight detail fetch on every new one — rapid row
+  // switching must not land out-of-order responses under the wrong URL.
+  const loadOneCtrlRef = useRef<AbortController | null>(null);
+  const loadOne = async (id: string, quiet = false) => {
+    loadOneCtrlRef.current?.abort();
+    const ctrl = new AbortController();
+    loadOneCtrlRef.current = ctrl;
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/${id}`);
+      const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
+        signal: ctrl.signal,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as { task: Task };
+      // A quiet (poll) refresh never clobbers in-progress edits.
+      if (quiet && dirtyRef.current) return;
       setSelected(json.task);
       setDraft(json.task);
-    } catch {
-      toast.error("Failed to load task");
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return;
+      if (!quiet) toast.error("Failed to load task");
     }
   };
+
+  // Keep the open task fresh alongside the list poll (the activity
+  // timeline already polls; without this the header could contradict it).
+  useEffect(() => {
+    if (!urlId) return;
+    const tick = window.setInterval(() => {
+      if (dirtyRef.current) return;
+      void loadOne(urlId, true);
+    }, POLL_MS);
+    return () => window.clearInterval(tick);
+  }, [urlId]);
 
   const save = async () => {
     if (!draft) return;
@@ -149,8 +190,12 @@ function TasksPage() {
       const json = (await res.json()) as { task: Task };
       setSelected(json.task);
       setDraft(json.task);
-      await load();
+      await load(undefined, false);
       toast.success("Saved");
+      if (json.task.status !== draft.status) {
+        const note = explainAutoCorrect(json.task, draft.status);
+        toast.message(note.title, { description: note.description });
+      }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -178,14 +223,13 @@ function TasksPage() {
         throw new Error(err.message ?? err.error ?? `HTTP ${res.status}`);
       }
       const json = (await res.json()) as { task: Task };
-      // The store may auto-correct (e.g., back to blocked if deps unmet).
+      // The store may auto-correct (e.g., back to blocked if deps unmet,
+      // or a recurring task re-arming itself after done).
       if (json.task.status !== target) {
-        toast.message(
-          `Auto-corrected to ${STATUS_LABEL[json.task.status]}`,
-          { description: explainAutoCorrect(json.task.status, target) }
-        );
+        const note = explainAutoCorrect(json.task, target);
+        toast.message(note.title, { description: note.description });
       }
-      await load();
+      await load(undefined, false);
       // If the moved task was the selected one, refresh detail view too.
       if (selected?.id === id) {
         setSelected(json.task);
@@ -214,7 +258,7 @@ function TasksPage() {
         throw new Error(err.message ?? err.error ?? `HTTP ${res.status}`);
       }
       const wasSelected = selected?.id === id;
-      await load();
+      await load(undefined, false);
       toast.success("Deleted");
       setConfirmDelete(null);
       if (wasSelected) void navigate({ to: "/tasks" });
@@ -250,6 +294,34 @@ function TasksPage() {
       (draft.due_at ?? null) !== (selected.due_at ?? null) ||
       JSON.stringify(draft.recurrence) !== JSON.stringify(selected.recurrence))
   );
+  dirtyRef.current = dirty;
+
+  // Unsaved edits never silently die: selection changes route through
+  // the discard dialog while dirty.
+  const guardNav = (go: () => void) => {
+    if (dirtyRef.current) setPendingNav(() => go);
+    else go();
+  };
+  const pickTask = (id: string) => {
+    if (id === urlId) return;
+    guardNav(() => void navigate({ to: "/tasks", search: { id } }));
+  };
+  const closeDetail = () => {
+    guardNav(() => void navigate({ to: "/tasks" }));
+  };
+
+  // Cmd/Ctrl+S saves the open task instead of the page.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        if (!draft) return;
+        e.preventDefault();
+        if (dirty && !saving) void save();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
@@ -299,135 +371,62 @@ function TasksPage() {
           </div>
         ) : tasks.length === 0 ? (
           <EmptyTasksState />
-        ) : viewMode === "board" ? (
-          <TasksBoard
-            tasks={tasks}
-            selectedId={selected?.id ?? null}
-            onPick={(id) => void navigate({ to: "/tasks", search: { id } })}
-            onMove={(id, target) => void moveStatus(id, target)}
-          />
         ) : (
           <div className="flex flex-1 overflow-hidden">
-          <aside
-            className={cn(
-              "flex shrink-0 flex-col overflow-y-auto border-paper-rule md:w-96 md:border-r",
-              selected ? "hidden md:flex" : "flex w-full md:w-96"
-            )}
-          >
-            {STATUS_ORDER.map((status) => {
-              const items = grouped.get(status) ?? [];
-              if (items.length === 0) return null;
-              return (
-                <div key={status}>
-                  <div className="flex items-center justify-between border-b border-paper-rule px-4 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
-                    <span>{STATUS_LABEL[status]}</span>
-                    <TabularTick value={items.length} />
-                  </div>
-                  <div className="flex flex-col">
-                    {items.map((t) => (
-                      <TaskListRow
-                        key={t.id}
-                        task={t}
-                        isActive={selected?.id === t.id}
-                        onPick={() =>
-                          void navigate({ to: "/tasks", search: { id: t.id } })
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </aside>
-
-          <section
-            className={cn(
-              "flex flex-1 flex-col overflow-hidden",
-              !selected ? "hidden md:flex" : "flex"
-            )}
-          >
-            {selected && draft && (
-              <button
-                type="button"
-                onClick={() => void navigate({ to: "/tasks" })}
-                className="mx-4 mt-3 inline-flex w-fit items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-soft hover:text-plot-red md:hidden"
+            {viewMode === "board" ? (
+              <div
+                className={cn(
+                  "min-w-0 flex-1 flex-col overflow-hidden",
+                  selected && draft ? "hidden md:flex" : "flex"
+                )}
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M15 18l-6-6 6-6" />
-                </svg>
-                Back to tasks
-              </button>
-            )}
-            {!selected || !draft ? (
-              <div className="flex flex-1 items-start justify-center px-6 pt-24">
-                <div className="max-w-sm">
-                  <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
-                    No selection
-                  </div>
-                  <h3 className="mt-2 text-base font-semibold text-ink">
-                    Pick a task
-                  </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-                    Each task has a title, status, assignee, schedule, and
-                    free-form body. Status changes are gated by dependencies.
-                  </p>
-                </div>
+                <TasksBoard
+                  tasks={tasks}
+                  selectedId={selected?.id ?? null}
+                  onPick={pickTask}
+                  onMove={(id, target) => void moveStatus(id, target)}
+                />
               </div>
             ) : (
-              <TaskDetailPanel
-                variant="pane"
-                selected={selected}
-                draft={draft}
-                saving={saving}
-                dirty={dirty}
-                agents={agents}
-                tasks={tasks}
-                onChange={setDraft}
-                onSave={() => void save()}
-                onDeleteClick={() => setConfirmDelete(selected.id)}
-              />
-            )}
-          </section>
-          </div>
-        )}
-
-        {/* Board mode opens the task in the modal; list mode shows it in
-            the side pane above. */}
-        <Dialog
-          open={viewMode === "board" && !!selected && !!draft}
-          onOpenChange={(open) => {
-            if (!open) void navigate({ to: "/tasks" });
-          }}
-        >
-              <DialogContent
-                showCloseButton={false}
-                // Mobile: full-takeover above the bottom tab bar. The
-                // Dialog primitive centers via top-50/left-50 + translate;
-                // override to top-0/left-0/no-translate so the dialog
-                // pins to the top edge and we can subtract the tab-bar
-                // height from the dialog height cleanly. Desktop: revert
-                // to the centered floating dialog at 94vh × 72rem max.
-                className="overflow-hidden left-0 top-0 translate-x-0 translate-y-0 h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom))] w-screen max-w-none md:left-[50%] md:top-[50%] md:translate-x-[-50%] md:translate-y-[-50%] md:h-[94vh] md:max-h-[94vh] md:w-[min(72rem,96vw)] sm:max-w-none"
+              <aside
+                className={cn(
+                  "flex shrink-0 flex-col overflow-y-auto border-paper-rule md:w-96 md:border-r",
+                  selected ? "hidden md:flex" : "flex w-full md:w-96"
+                )}
               >
-                <VisuallyHidden.Root>
-                  <DialogTitle>{selected?.title ?? "Task"}</DialogTitle>
-                  <DialogDescription>
-                    Edit task details — title, status, assignee, schedule,
-                    recurrence, and body.
-                  </DialogDescription>
-                </VisuallyHidden.Root>
-                {selected && draft && (
+                {STATUS_ORDER.map((status) => {
+                  const items = grouped.get(status) ?? [];
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={status}>
+                      <div className="flex items-center justify-between border-b border-paper-rule px-4 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
+                        <span>{STATUS_LABEL[status]}</span>
+                        <TabularTick value={items.length} />
+                      </div>
+                      <div className="flex flex-col">
+                        {items.map((t) => (
+                          <TaskListRow
+                            key={t.id}
+                            task={t}
+                            isActive={selected?.id === t.id}
+                            onPick={() => pickTask(t.id)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </aside>
+            )}
+
+            {/* One detail surface for both modes: the routed pane. Board
+                shows it as a bordered side panel only while a task is
+                selected; list keeps it resident with a placeholder. */}
+            {viewMode === "board" ? (
+              selected &&
+              draft && (
+                <section className="flex w-full shrink-0 flex-col overflow-hidden border-paper-rule md:w-[30rem] md:border-l lg:w-[38rem] xl:w-[44rem]">
+                  <BackToTasks onClick={closeDetail} />
                   <TaskDetailPanel
                     selected={selected}
                     draft={draft}
@@ -438,10 +437,81 @@ function TasksPage() {
                     onChange={setDraft}
                     onSave={() => void save()}
                     onDeleteClick={() => setConfirmDelete(selected.id)}
-                    onClose={() => void navigate({ to: "/tasks" })}
+                    onClose={closeDetail}
+                  />
+                </section>
+              )
+            ) : (
+              <section
+                className={cn(
+                  "flex flex-1 flex-col overflow-hidden",
+                  !selected ? "hidden md:flex" : "flex"
+                )}
+              >
+                {selected && draft && <BackToTasks onClick={closeDetail} />}
+                {!selected || !draft ? (
+                  <div className="flex flex-1 items-start justify-center px-6 pt-24">
+                    <div className="max-w-sm">
+                      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint">
+                        No selection
+                      </div>
+                      <h3 className="mt-2 text-base font-semibold text-ink">
+                        Pick a task
+                      </h3>
+                      <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+                        Each task has a title, status, assignee, schedule, and
+                        free-form body. Status changes are gated by
+                        dependencies.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <TaskDetailPanel
+                    selected={selected}
+                    draft={draft}
+                    saving={saving}
+                    dirty={dirty}
+                    agents={agents}
+                    tasks={tasks}
+                    onChange={setDraft}
+                    onSave={() => void save()}
+                    onDeleteClick={() => setConfirmDelete(selected.id)}
                   />
                 )}
-              </DialogContent>
+              </section>
+            )}
+          </div>
+        )}
+
+        <Dialog
+          open={!!pendingNav}
+          onOpenChange={(open) => {
+            if (!open) setPendingNav(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Discard unsaved changes?</DialogTitle>
+              <DialogDescription>
+                This task has edits that aren&apos;t saved.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPendingNav(null)}>
+                Keep editing
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const go = pendingNav;
+                  setPendingNav(null);
+                  go?.();
+                }}
+              >
+                Discard
+              </Button>
+            </DialogFooter>
+          </DialogContent>
         </Dialog>
 
         <Dialog
@@ -540,11 +610,59 @@ function TasksPage() {
   );
 }
 
-function explainAutoCorrect(actual: TaskStatus, requested: TaskStatus): string {
-  if (actual === "blocked" && requested === "open") {
-    return "Dependencies aren't all done yet.";
+// Mobile-only escape hatch back to the list/board when the detail pane
+// takes over the full width.
+function BackToTasks({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mx-4 mt-3 inline-flex w-fit items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-soft hover:text-plot-red md:hidden"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M15 18l-6-6 6-6" />
+      </svg>
+      Back to tasks
+    </button>
+  );
+}
+
+function explainAutoCorrect(
+  task: Task,
+  requested: TaskStatus
+): { title: string; description: string } {
+  // Marking a recurring task done re-arms it — designed behavior, not
+  // a correction, so don't make it read like an error.
+  if (task.recurrence && requested === "done" && task.status === "open") {
+    const next = task.start_at
+      ? formatRelativeFromIso(task.start_at)
+      : "pending";
+    return {
+      title: "Recurring task re-armed",
+      description: `Run ${task.runs} complete. Next fire ${next}.`,
+    };
   }
-  return `Server returned status ${actual} instead of ${requested}.`;
+  if (task.status === "blocked" && requested === "open") {
+    return {
+      title: `Auto-corrected to ${STATUS_LABEL[task.status]}`,
+      description: "Dependencies aren't all done yet.",
+    };
+  }
+  return {
+    title: `Auto-corrected to ${STATUS_LABEL[task.status]}`,
+    description: `Server returned status ${task.status} instead of ${requested}.`,
+  };
 }
 
 // One-pass vocabulary scribe-in: open → in_progress → done, then settle on

@@ -6,9 +6,10 @@ import {
   formatDate,
   formatAbsoluteFromUnix,
   formatRelativeFromUnix,
-  formatRelativeFutureFromIso,
+  formatRelativeFromIso,
+  describeCron,
   dueUrgencyClass,
-  shortRecurrenceLabel,
+  recurrenceTitle,
   type Recurrence,
 } from "@/app/tasks/types";
 
@@ -16,7 +17,8 @@ const NOW = new Date("2026-06-12T12:00:00Z").getTime();
 const NOW_SEC = Math.floor(NOW / 1000);
 const isoAt = (offsetMs: number) => new Date(NOW + offsetMs).toISOString();
 
-const ISO_LOCAL_SHAPE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+// Minute precision — seconds are dropped at card/footer altitude.
+const ISO_LOCAL_SHAPE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
 
 describe("status constants", () => {
   it("STATUS_ORDER lists each status exactly once", () => {
@@ -37,22 +39,23 @@ describe("status constants", () => {
 });
 
 describe("formatDate", () => {
-  it("renders ISO-shape local time (sv-SE)", () => {
+  it("renders ISO-shape local time (sv-SE) at minute precision", () => {
     const iso = "2026-01-02T03:04:05.000Z";
     const out = formatDate(iso);
     expect(out).toMatch(ISO_LOCAL_SHAPE);
-    // Round-trip: parsing the local-time string back yields the same instant.
-    expect(new Date(out.replace(" ", "T")).getTime()).toBe(
-      new Date(iso).getTime()
+    // Round-trip at minute precision: parsing the local-time string back
+    // yields the same instant minus the dropped seconds.
+    const minutePrecision = Math.floor(new Date(iso).getTime() / 60000);
+    expect(Math.floor(new Date(out.replace(" ", "T")).getTime() / 60000)).toBe(
+      minutePrecision
     );
   });
 });
 
 describe("formatAbsoluteFromUnix", () => {
-  it("matches formatDate for the same instant", () => {
-    const sec = NOW_SEC;
-    expect(formatAbsoluteFromUnix(sec)).toBe(
-      formatDate(new Date(sec * 1000).toISOString())
+  it("renders full-precision local time for tooltips", () => {
+    expect(formatAbsoluteFromUnix(NOW_SEC)).toMatch(
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
     );
   });
 });
@@ -67,43 +70,26 @@ describe("time-relative helpers", () => {
   });
 
   describe("formatRelativeFromUnix", () => {
-    it("formats seconds, minutes, hours, days", () => {
-      expect(formatRelativeFromUnix(NOW_SEC - 30)).toBe("30s ago");
-      expect(formatRelativeFromUnix(NOW_SEC - 90)).toBe("1m ago");
-      expect(formatRelativeFromUnix(NOW_SEC - 5 * 3600)).toBe("5h ago");
-      expect(formatRelativeFromUnix(NOW_SEC - 3 * 86400)).toBe("3d ago");
-    });
-
-    it("clamps future timestamps to 0s ago", () => {
-      expect(formatRelativeFromUnix(NOW_SEC + 500)).toBe("0s ago");
-    });
-
-    it("rolls over at unit boundaries", () => {
-      expect(formatRelativeFromUnix(NOW_SEC - 59)).toBe("59s ago");
-      expect(formatRelativeFromUnix(NOW_SEC - 60)).toBe("1m ago");
-      expect(formatRelativeFromUnix(NOW_SEC - 3599)).toBe("59m ago");
-      expect(formatRelativeFromUnix(NOW_SEC - 3600)).toBe("1h ago");
-      expect(formatRelativeFromUnix(NOW_SEC - 86400)).toBe("1d ago");
+    it("humanizes past timestamps (date-fns strict)", () => {
+      expect(formatRelativeFromUnix(NOW_SEC - 30)).toBe("30 seconds ago");
+      expect(formatRelativeFromUnix(NOW_SEC - 5 * 3600)).toBe("5 hours ago");
+      expect(formatRelativeFromUnix(NOW_SEC - 3 * 86400)).toBe("3 days ago");
     });
   });
 
-  describe("formatRelativeFutureFromIso", () => {
-    it("formats near-future deltas", () => {
-      expect(formatRelativeFutureFromIso(isoAt(30 * 1000))).toBe("in <1m");
-      expect(formatRelativeFutureFromIso(isoAt(5 * 60 * 1000))).toBe("in 5m");
-      expect(formatRelativeFutureFromIso(isoAt(3 * 3600 * 1000))).toBe("in 3h");
-      expect(formatRelativeFutureFromIso(isoAt(2 * 86400 * 1000))).toBe(
-        "in 2d"
+  describe("formatRelativeFromIso", () => {
+    it("humanizes past and future timestamps", () => {
+      expect(formatRelativeFromIso(isoAt(-3 * 86400 * 1000))).toBe(
+        "3 days ago"
       );
-    });
-
-    it("falls back to absolute formatting for past timestamps", () => {
-      const iso = isoAt(-60 * 1000);
-      expect(formatRelativeFutureFromIso(iso)).toBe(formatDate(iso));
+      expect(formatRelativeFromIso(isoAt(5 * 60 * 1000))).toBe(
+        "in 5 minutes"
+      );
+      expect(formatRelativeFromIso(isoAt(2 * 86400 * 1000))).toBe("in 2 days");
     });
 
     it("returns the input verbatim when unparseable", () => {
-      expect(formatRelativeFutureFromIso("not-a-date")).toBe("not-a-date");
+      expect(formatRelativeFromIso("not-a-date")).toBe("not-a-date");
     });
   });
 
@@ -135,28 +121,40 @@ describe("time-relative helpers", () => {
   });
 });
 
-describe("shortRecurrenceLabel", () => {
-  it("renders cron expr with and without tz", () => {
-    const base: Recurrence = {
-      kind: "cron",
-      expr: "0 9 * * 1",
-      session: "fresh",
-    };
-    expect(shortRecurrenceLabel(base)).toBe("0 9 * * 1");
-    expect(shortRecurrenceLabel({ ...base, tz: "Asia/Kolkata" })).toBe(
-      "0 9 * * 1 (Asia/Kolkata)"
+describe("describeCron", () => {
+  it("humanizes common expressions", () => {
+    expect(describeCron("0 9 * * 1-5")).toBe(
+      "At 09:00, Monday through Friday"
     );
+    expect(describeCron("*/15 * * * *")).toBe("Every 15 minutes");
   });
 
-  it("humanizes interval recurrences across units", () => {
+  it("returns null for empty or unparseable input", () => {
+    expect(describeCron("")).toBeNull();
+    expect(describeCron("not a cron")).toBeNull();
+  });
+});
+
+describe("recurrenceTitle", () => {
+  it("carries humanized text, tz, and the raw expr for tooltips", () => {
+    expect(
+      recurrenceTitle({
+        kind: "cron",
+        expr: "0 9 * * 1",
+        tz: "Asia/Kolkata",
+        session: "fresh",
+      })
+    ).toBe("At 09:00, only on Monday (Asia/Kolkata) · 0 9 * * 1");
+  });
+
+  it("humanizes interval cadence across units", () => {
     const interval = (every_ms: number): Recurrence => ({
       kind: "interval",
       every_ms,
       session: "reuse",
     });
-    expect(shortRecurrenceLabel(interval(30 * 1000))).toBe("every 30s");
-    expect(shortRecurrenceLabel(interval(5 * 60 * 1000))).toBe("every 5m");
-    expect(shortRecurrenceLabel(interval(2 * 3600 * 1000))).toBe("every 2h");
-    expect(shortRecurrenceLabel(interval(3 * 86400 * 1000))).toBe("every 3d");
+    expect(recurrenceTitle(interval(5 * 60 * 1000))).toBe("every 5m");
+    expect(recurrenceTitle(interval(2 * 3600 * 1000))).toBe("every 2h");
+    expect(recurrenceTitle(interval(3 * 86400 * 1000))).toBe("every 3d");
   });
 });
