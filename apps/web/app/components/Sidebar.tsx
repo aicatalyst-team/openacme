@@ -5,6 +5,7 @@ import {
   Bot,
   BookOpen,
   Command,
+  Gauge,
   ListChecks,
   Settings,
   PanelLeftClose,
@@ -30,6 +31,7 @@ const navItems = [
   { link: linkOptions({ to: "/teams" }), label: "Teams", icon: Users },
   { link: linkOptions({ to: "/tasks" }), label: "Tasks", icon: ListChecks },
   { link: linkOptions({ to: "/skills" }), label: "Skills", icon: BookOpen },
+  { link: linkOptions({ to: "/usage" }), label: "Usage", icon: Gauge },
   { link: linkOptions({ to: "/settings" }), label: "Settings", icon: Settings },
 ];
 

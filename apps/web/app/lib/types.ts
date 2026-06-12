@@ -178,3 +178,103 @@ export interface ModelDefaultsView {
 
 // Mirror of `ModelDefaultsUpdate` — body shape for PUT /api/config/model.
 export type ModelDefaultsUpdate = Partial<ModelDefaultsView>;
+
+// ── Usage ledger (mirrored, not imported, from @openacme/db +
+//    @openacme/server/src/routes/usage.ts) ────────────────────────────
+
+export const USAGE_KINDS = [
+  "interactive",
+  "autonomous",
+  "extractor",
+  "title",
+  "selector",
+  "summarizer",
+] as const;
+export type UsageKind = (typeof USAGE_KINDS)[number];
+
+export interface UsageEventRow {
+  id: string;
+  createdAt: number;
+  agentId: string;
+  sessionId: string;
+  messageId: string | null;
+  taskId: string | null;
+  kind: UsageKind;
+  provider: string;
+  model: string;
+  authMode: "api_key" | "oauth" | "local";
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number | null;
+  reasoningTokens: number | null;
+  totalTokens: number;
+  costUsd: number | null;
+  costUsdEquivalent: number | null;
+  costSource: "estimated" | "provider_reported" | "subscription" | "free";
+  steps: number | null;
+  durationMs: number | null;
+}
+
+export interface UsageTotals {
+  costUsd: number;
+  costUsdEquivalent: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  events: number;
+  costUsdByAuthMode: Record<string, number>;
+  eventsByKind: Record<string, number>;
+}
+
+export interface UsageSummaryResponse {
+  range: { from: number; to: number };
+  totals: UsageTotals;
+  previous: UsageTotals;
+  cacheSavingsUsd: number;
+  forecast: { monthToDateUsd: number; projectedMonthUsd: number };
+  anomaly: { todayUsd: number; trailingMeanUsd: number; flagged: boolean };
+}
+
+export interface UsageSeriesRow {
+  t: number;
+  key: string;
+  costUsd: number;
+  costUsdEquivalent: number;
+  totalTokens: number;
+  events: number;
+}
+
+export interface UsageBreakdownRow {
+  key: string;
+  costUsd: number;
+  costUsdEquivalent: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  events: number;
+  lastAt: number;
+}
+
+export interface UsageHeatmapResponse {
+  range: { from: number; to: number };
+  daily: Array<{
+    day: string;
+    agentId: string;
+    costUsd: number;
+    costUsdEquivalent: number;
+    totalTokens: number;
+    events: number;
+  }>;
+  hours: Array<{
+    agentId: string;
+    hour: number;
+    costUsd: number;
+    costUsdEquivalent: number;
+    events: number;
+  }>;
+}
