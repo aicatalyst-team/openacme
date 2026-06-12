@@ -284,12 +284,10 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
           </div>
         )}
       </div>
-      {/* Right meta column — desktop only. Mobile pushes the same data
-          into the title block's secondary lines. */}
-      <div className="hidden w-40 shrink-0 flex-col items-end gap-1 pt-1 text-right md:flex">
-        <span className="font-mono text-[11px] tabular-nums text-ink-faint">
-          {formatRelative(s.lastActivity)}
-        </span>
+      {/* Right meta — desktop only, one line so every row keeps the same
+          height regardless of wake/task extras. Mobile pushes the same
+          data into the title block's secondary lines. */}
+      <div className="hidden shrink-0 items-center gap-2 whitespace-nowrap pt-1 md:flex">
         {wakeLabel && (
           <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.08em] text-signal-blue">
             <Clock className="size-3" aria-hidden />
@@ -301,6 +299,9 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
             {s.pendingTaskCount} task{s.pendingTaskCount === 1 ? "" : "s"}
           </span>
         )}
+        <span className="w-16 text-right font-mono text-[11px] tabular-nums text-ink-faint">
+          {formatRelative(s.lastActivity)}
+        </span>
       </div>
       {deleteButton("full")}
     </div>

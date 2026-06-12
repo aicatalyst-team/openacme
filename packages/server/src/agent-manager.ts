@@ -628,8 +628,27 @@ export class AgentManager {
     await Promise.all(
       this.agentStore
         .list()
-        .map((def) => this.reinitMCPForAgent(def.id))
+        .map((def) => this.queueMcpReinit(def.id))
     );
+  }
+
+  private mcpReinitTail = new Map<string, Promise<void>>();
+
+  /**
+   * Serialized reinit per agent: HTTP routes fire this without awaiting
+   * (a reinit can take tens of seconds against slow/broken servers, and
+   * the UI polls /api/mcp/status for the outcome), so rapid saves must
+   * chain rather than race the disconnect/connect halves.
+   */
+  queueMcpReinit(id: string): Promise<void> {
+    const prev = this.mcpReinitTail.get(id) ?? Promise.resolve();
+    const next = prev
+      .then(() => this.reinitMCPForAgent(id))
+      .catch((e) =>
+        log.warn({ err: e, agentId: id }, "background MCP reinit failed")
+      );
+    this.mcpReinitTail.set(id, next);
+    return next;
   }
 
   /**
@@ -974,7 +993,7 @@ export class AgentManager {
     // Rare + cheap (workers respawn lazily).
     this.agents.clear();
     await this.toolHostManager.stopAll();
-    await this.reinitMCPForAgent(provisioned.id);
+    await this.queueMcpReinit(provisioned.id);
     const agent = this.createAgentFromDef(provisioned);
     this.agents.set(provisioned.id, agent);
     return agent;
@@ -1255,7 +1274,16 @@ export class AgentManager {
   ): Promise<AgentDefinition> {
     const existing = this.agentStore.get(id);
     if (!existing) throw new Error(`Agent not found: ${id}`);
-    if (existing.managed) throw managedAgentError(id, "edited");
+    if (existing.managed) {
+      // Managed locks template-owned identity; operational knobs (model,
+      // tools, skills, MCP) stay user-editable. Value-inequality, not
+      // presence — full-slice PUTs echo unchanged fields.
+      const locked = ["name", "avatar", "role", "persona"] as const;
+      const rec = updates as Record<string, unknown>;
+      const ex = existing as unknown as Record<string, unknown>;
+      if (locked.some((f) => hasOwn(updates, f) && rec[f] !== (ex[f] ?? "")))
+        throw managedAgentError(id, "edited");
+    }
 
     const updated: AgentDefinition = {
       ...existing,
@@ -1274,8 +1302,10 @@ export class AgentManager {
 
     if (mcpChanged) {
       // reinit restarts the worker itself (stdio MCP children must come
-      // up under the new config).
-      await this.reinitMCPForAgent(id);
+      // up under the new config). Not awaited: connects can take tens of
+      // seconds and the save must not hang on them — the UI watches
+      // /api/mcp/status for connection outcomes.
+      void this.queueMcpReinit(id);
     } else {
       // Tool list / persona / model only — evict the cached Agent and
       // restart the worker: definition changes (e.g. `paths` grants)
@@ -1664,7 +1694,7 @@ export class AgentManager {
         this.agentStore.upsert(fresh);
         this.copyTemplateResources(template, fresh.id);
 
-        await this.reinitMCPForAgent(fresh.id);
+        await this.queueMcpReinit(fresh.id);
         this.evictAgent(fresh.id);
 
         log.info({ templateId, agentId: fresh.id }, "refreshed managed agent");

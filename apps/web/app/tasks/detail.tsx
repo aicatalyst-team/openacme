@@ -1,4 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   Save,
@@ -9,11 +17,11 @@ import {
   Unlink,
   ChevronDown,
   Search,
+  ArrowUpRight,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { LoadingHairline } from "@/app/components/ui/loading-hairline";
 import { Input } from "@/app/components/ui/input";
-import { Textarea } from "@/app/components/ui/textarea";
 import { Label } from "@/app/components/ui/label";
 import { SectionEyebrow } from "@/app/components/ui/section-eyebrow";
 import { Badge } from "@/app/components/ui/badge";
@@ -26,8 +34,10 @@ import {
 } from "@/app/components/ui/select";
 import { DateTimePicker } from "@/app/components/ui/date-time-picker";
 import { Markdown } from "@/app/components/Markdown";
+import { MarkdownEditor } from "@/app/components/MarkdownEditor";
 import { cn } from "@/app/lib/utils";
 import { AgentRef } from "@/app/components/ui/agent-ref";
+import { AgentAvatar } from "@/app/components/ui/agent-avatar";
 import {
   STATUS_LABEL,
   STATUS_ORDER,
@@ -37,6 +47,7 @@ import {
   formatDate,
   formatRelativeFromIso,
   formatRelativeFromUnix,
+  recurrenceTitle,
   type Comment,
   type Recurrence,
   type RecurrenceSession,
@@ -49,6 +60,37 @@ import { API_BASE } from "@/app/lib/api";
 export interface AgentOption {
   id: string;
   name: string;
+  avatar?: string;
+}
+
+/* Linear-style value trigger: chrome only on hover/focus. The -ml-2
+ * compensates the hover-surface padding so values stay column-aligned. */
+const GHOST_TRIGGER =
+  "-ml-2 h-7 w-fit max-w-full border border-transparent bg-transparent px-2 text-sm text-ink transition-colors hover:bg-paper-sunk focus-visible:border-plot-red";
+
+function PropertyRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid min-h-8 grid-cols-[96px_minmax(0,1fr)] items-center gap-x-3">
+      <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
+        {label}
+      </span>
+      <div className="flex min-w-0 items-center">{children}</div>
+    </div>
+  );
+}
+
+function recurrenceSummary(rec: Recurrence): string {
+  const base =
+    rec.kind === "cron"
+      ? (describeCron(rec.expr) ?? rec.expr)
+      : recurrenceTitle(rec);
+  return `${base} · ${rec.session === "reuse" ? "reuse session" : "fresh session"}`;
 }
 
 export interface TaskDetailPanelProps {
@@ -85,6 +127,11 @@ export function TaskDetailPanel({
   );
   const [copiedTask, setCopiedTask] = useState(false);
   const [copiedSession, setCopiedSession] = useState(false);
+  const [recurrenceOpen, setRecurrenceOpen] = useState(false);
+
+  // Progressive disclosure resets per task — an expanded schedule editor
+  // shouldn't follow the user to the next task.
+  useEffect(() => setRecurrenceOpen(false), [selected.id]);
 
   const copy = async (text: string, mark: (b: boolean) => void) => {
     try {
@@ -151,97 +198,134 @@ export function TaskDetailPanel({
       </div>
 
       <div className="space-y-5 py-5">
-        <div className="space-y-1.5">
-          <Label htmlFor="title">Title</Label>
-          {/* The task's one real heading — give it a heading's scale. */}
-          <Input
-            id="title"
-            value={draft.title}
-            onChange={(e) => onChange({ ...draft, title: e.target.value })}
-            className="h-10 text-base font-semibold md:text-lg"
-          />
-        </div>
+        {/* The task's one real heading — chromeless, edits in place. */}
+        <input
+          aria-label="Title"
+          value={draft.title}
+          onChange={(e) => onChange({ ...draft, title: e.target.value })}
+          placeholder="Task title"
+          className="w-full border-0 bg-transparent px-0 text-xl font-semibold leading-snug text-ink outline-none placeholder:text-ink-faint md:text-2xl"
+        />
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="status">Status</Label>
+        <div className="space-y-0.5">
+          <PropertyRow label="Status">
             <Select
               value={draft.status}
               onValueChange={(v) =>
                 onChange({ ...draft, status: v as TaskStatus })
               }
             >
-              <SelectTrigger id="status" className="w-full">
+              <SelectTrigger
+                id="status"
+                size="sm"
+                className={cn(GHOST_TRIGGER, "data-[size=sm]:h-7")}
+              >
+                {/* SelectValue (not a bare Badge): Radix's item-aligned
+                    positioning needs the value node to anchor the popup. */}
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {STATUS_ORDER.map((s) => (
                   <SelectItem key={s} value={s}>
-                    {STATUS_LABEL[s]}
+                    <Badge variant={STATUS_VARIANT[s]}>{STATUS_LABEL[s]}</Badge>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="assignee">Assignee</Label>
-            <AgentCombobox
-              agents={agents}
-              value={draft.assignee}
-              onChange={(id) => onChange({ ...draft, assignee: id })}
-            />
-            {!assigneeKnown && draft.assignee && (
-              <p className="text-xs text-destructive">
-                Current assignee no longer exists. Pick a known agent.
-              </p>
-            )}
-          </div>
-        </div>
+          </PropertyRow>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="start_at">Start at</Label>
+          <PropertyRow label="Assignee">
+            {/* flex-1 gives the fit-content trigger a resolved available
+                width; without it the nested truncate collapses to
+                min-content. */}
+            <div className="min-w-0 flex-1">
+              <AgentCombobox
+                agents={agents}
+                value={draft.assignee}
+                onChange={(id) => onChange({ ...draft, assignee: id })}
+              />
+              {!assigneeKnown && draft.assignee && (
+                <p className="px-2 text-xs text-destructive">
+                  Current assignee no longer exists. Pick a known agent.
+                </p>
+              )}
+            </div>
+          </PropertyRow>
+
+          <PropertyRow label="Start">
             <DateTimePicker
+              ghost
               id="start_at"
               value={draft.start_at}
               onChange={(iso) => onChange({ ...draft, start_at: iso })}
               placeholder="Pick start"
+              className="-ml-2"
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="due_at">Due at</Label>
+          </PropertyRow>
+
+          <PropertyRow label="Due">
             <DateTimePicker
+              ghost
               id="due_at"
               value={draft.due_at}
               onChange={(iso) => onChange({ ...draft, due_at: iso })}
               placeholder="Pick due"
+              className="-ml-2"
             />
-          </div>
+          </PropertyRow>
+
+          <PropertyRow label="Session">
+            <SessionRow
+              sessionId={sessionId}
+              shortSession={shortSession}
+              copiedSession={copiedSession}
+              onCopy={() => sessionId && void copy(sessionId, setCopiedSession)}
+              onUnbind={() => onChange({ ...draft, session_id: null })}
+            />
+          </PropertyRow>
+
+          <PropertyRow label="Repeat">
+            <button
+              type="button"
+              onClick={() => setRecurrenceOpen((o) => !o)}
+              aria-expanded={recurrenceOpen}
+              className={cn(
+                GHOST_TRIGGER,
+                "flex items-center gap-2",
+                !draft.recurrence && "text-ink-faint"
+              )}
+            >
+              <span className="truncate">
+                {draft.recurrence
+                  ? recurrenceSummary(draft.recurrence)
+                  : "None"}
+              </span>
+              <ChevronDown
+                className={cn(
+                  "size-3.5 shrink-0 text-ink-faint transition-transform",
+                  recurrenceOpen && "rotate-180"
+                )}
+              />
+            </button>
+          </PropertyRow>
         </div>
 
-        <SessionIdField
-          sessionId={sessionId}
-          shortSession={shortSession}
-          copiedSession={copiedSession}
-          onCopy={() => sessionId && void copy(sessionId, setCopiedSession)}
-          onUnbind={() => onChange({ ...draft, session_id: null })}
-        />
+        {recurrenceOpen && (
+          <RecurrenceEditor
+            value={draft.recurrence}
+            onChange={(rec) => onChange({ ...draft, recurrence: rec })}
+            runs={selected.runs}
+            lastRunAt={selected.last_run_at}
+            nextStartAt={selected.start_at}
+          />
+        )}
 
-        <RecurrenceEditor
-          value={draft.recurrence}
-          onChange={(rec) => onChange({ ...draft, recurrence: rec })}
-          runs={selected.runs}
-          lastRunAt={selected.last_run_at}
-          nextStartAt={selected.start_at}
-        />
-
-        <div className="space-y-1.5">
-          <Label htmlFor="body">Body</Label>
-          <Textarea
-            id="body"
-            rows={12}
+        <div className="border-t border-paper-rule pt-4">
+          <MarkdownEditor
             value={draft.body ?? ""}
-            onChange={(e) => onChange({ ...draft, body: e.target.value })}
+            onChange={(md) => onChange({ ...draft, body: md })}
+            placeholder="Add a description — type / for blocks…"
+            contentClassName="min-h-[120px]"
           />
         </div>
 
@@ -416,8 +500,8 @@ function ActivityTimeline({
   }
 
   const agentMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const a of agents) m.set(a.id, a.name);
+    const m = new Map<string, AgentOption>();
+    for (const a of agents) m.set(a.id, a);
     return m;
   }, [agents]);
 
@@ -491,6 +575,7 @@ function ActivityTimeline({
 interface ResolvedAuthor {
   kind: "agent" | "user" | "system" | "unknown";
   handle: string;
+  avatar?: string;
 }
 
 // Disambiguation: agents render as `@<handle>` (regular ink), non-agent
@@ -502,18 +587,24 @@ interface ResolvedAuthor {
 // surface it via the description, not the actor label.
 function resolveAuthor(
   id: string,
-  agentMap: Map<string, string>
+  agentMap: Map<string, AgentOption>
 ): ResolvedAuthor {
   if (id === "system:user") return { kind: "user", handle: "user" };
   if (id.startsWith("system:")) return { kind: "system", handle: "system" };
-  if (agentMap.has(id)) return { kind: "agent", handle: id };
+  if (agentMap.has(id))
+    return { kind: "agent", handle: id, avatar: agentMap.get(id)?.avatar };
   return { kind: "unknown", handle: id.slice(0, 8) };
 }
 
 function AuthorChip({ author }: { author: ResolvedAuthor }) {
   if (author.kind === "agent") {
     return (
-      <AgentRef id={author.handle} className="font-mono text-[11px] text-ink" />
+      <span className="inline-flex items-center gap-1.5">
+        {author.avatar && (
+          <AgentAvatar avatar={author.avatar} size="sm" className="text-ink-soft" />
+        )}
+        <AgentRef id={author.handle} className="font-mono text-[11px] text-ink" />
+      </span>
     );
   }
   return (
@@ -624,7 +715,7 @@ function EventRow({
 }: {
   event: TaskEvent;
   titleByDepId: Map<string, string>;
-  agentMap: Map<string, string>;
+  agentMap: Map<string, AgentOption>;
 }) {
   const payload = parseEventPayload(event.payload);
   const actor = resolveEventActor(event, payload, agentMap);
@@ -638,11 +729,19 @@ function EventRow({
           <>
             <span
               className={cn(
+                "inline-flex items-center gap-1.5",
                 actor.kind === "agent"
                   ? "text-ink"
                   : "italic text-ink-soft"
               )}
             >
+              {actor.kind === "agent" && actor.avatar && (
+                <AgentAvatar
+                  avatar={actor.avatar}
+                  size="sm"
+                  className="text-ink-soft"
+                />
+              )}
               {actor.kind === "agent" ? `@${actor.handle}` : actor.handle}
             </span>
             <span className="text-ink-faint">·</span>
@@ -682,7 +781,7 @@ function resolveAgentHandle(id: string | undefined): string {
 function resolveEventActor(
   event: TaskEvent,
   payload: Record<string, unknown> | null,
-  agentMap: Map<string, string>
+  agentMap: Map<string, AgentOption>
 ): ResolvedAuthor | null {
   if (event.actor) return resolveAuthor(event.actor, agentMap);
   if (event.kind === "task_assigned") {
@@ -788,21 +887,19 @@ function Composer({
   onPost: () => void;
   posting: boolean;
 }) {
-  const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      e.preventDefault();
-      if (draftBody.trim() && !posting) onPost();
-    }
-  };
   return (
     <div className="space-y-2 border-t border-paper-rule pt-4">
-      <Textarea
-        value={draftBody}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKey}
-        placeholder="Leave a comment (markdown supported)"
-        rows={3}
-      />
+      <div className="border border-paper-rule bg-paper px-3 py-2 transition-colors focus-within:border-plot-red">
+        <MarkdownEditor
+          value={draftBody}
+          onChange={onChange}
+          onSubmit={() => {
+            if (draftBody.trim() && !posting) onPost();
+          }}
+          placeholder="Leave a comment…"
+          contentClassName="min-h-[56px]"
+        />
+      </div>
       <div className="flex items-center justify-between gap-3">
         <span className="font-mono text-[11px] text-ink-faint">
           ⌘ + ↵ to send
@@ -945,7 +1042,8 @@ function AgentCombobox({
           }
         }}
         className={cn(
-          "flex h-9 w-full items-center justify-between gap-2 border border-paper-rule bg-paper px-3 text-left text-sm text-ink outline-none transition-colors hover:bg-paper-sunk focus-visible:border-plot-red",
+          GHOST_TRIGGER,
+          "flex items-center justify-between gap-2 text-left outline-none",
           !selected && "text-ink-faint"
         )}
         aria-expanded={open}
@@ -971,7 +1069,7 @@ function AgentCombobox({
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 border border-paper-rule bg-paper">
+        <div className="absolute left-0 top-full z-50 mt-1 w-72 border border-paper-rule bg-paper">
           <div className="flex items-center gap-2 border-b border-paper-rule px-2.5 py-1.5">
             <Search className="size-3.5 shrink-0 text-ink-faint" />
             <input
@@ -1038,7 +1136,7 @@ function AgentCombobox({
   );
 }
 
-function SessionIdField({
+function SessionRow({
   sessionId,
   shortSession,
   copiedSession,
@@ -1051,40 +1149,49 @@ function SessionIdField({
   onCopy: () => void;
   onUnbind: () => void;
 }) {
+  if (!sessionId) {
+    return (
+      <span className="text-sm text-ink-faint">
+        None — assigned on next run
+      </span>
+    );
+  }
   return (
-    <div className="space-y-1.5">
-      <Label>Session</Label>
-      {sessionId ? (
-        <div className="flex h-9 items-center justify-between border border-paper-rule bg-paper px-3">
-          <button
-            type="button"
-            onClick={onCopy}
-            title={`Copy ${sessionId}`}
-            aria-label="Copy session ID"
-            className="group flex items-center gap-1.5 font-mono text-[12px] tabular-nums text-ink-soft transition-colors hover:text-plot-red focus-visible:outline focus-visible:outline-1 focus-visible:outline-plot-red"
-          >
-            <span>{shortSession}</span>
-            {copiedSession ? (
-              <Check className="size-3 text-plot-red" />
-            ) : (
-              <Copy className="size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={onUnbind}
-            title="Detach this session. A fresh one is assigned on the next run."
-            className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint transition-colors hover:text-plot-red focus-visible:outline focus-visible:outline-1 focus-visible:outline-plot-red"
-          >
-            <Unlink className="size-3" />
-            Unbind
-          </button>
-        </div>
-      ) : (
-        <div className="flex h-9 items-center border border-dashed border-paper-rule bg-paper px-3 text-sm text-ink-faint">
-          No session yet. One is assigned when the task next runs.
-        </div>
-      )}
+    <div className="group/session flex min-w-0 items-center gap-3">
+      <Link
+        to="/"
+        search={{ session: sessionId }}
+        title="Open this session in chat"
+        className={cn(
+          GHOST_TRIGGER,
+          "flex items-center gap-1.5 font-mono text-[12px] tabular-nums text-ink-soft hover:text-plot-red"
+        )}
+      >
+        <span>{shortSession}</span>
+        <ArrowUpRight className="size-3" />
+      </Link>
+      <button
+        type="button"
+        onClick={onCopy}
+        title={`Copy ${sessionId}`}
+        aria-label="Copy session ID"
+        className="inline-flex items-center p-1 text-ink-faint opacity-0 transition-all hover:text-plot-red focus-visible:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-plot-red group-hover/session:opacity-100"
+      >
+        {copiedSession ? (
+          <Check className="size-3 text-plot-red" />
+        ) : (
+          <Copy className="size-3" />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onUnbind}
+        title="Detach this session. A fresh one is assigned on the next run."
+        className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint opacity-0 transition-all hover:text-plot-red focus-visible:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-plot-red group-hover/session:opacity-100"
+      >
+        <Unlink className="size-3" />
+        Unbind
+      </button>
     </div>
   );
 }

@@ -396,6 +396,97 @@
     outline: 2px solid var(--plot-red);
     animation: focus-scribe var(--duration-state) var(--ease-out-quart) both;
   }
+
+  /* WYSIWYG editor surface (TipTap) — mirrors the read-only <Markdown>
+   * renderer so editing and reading are the same picture. */
+  .tiptap-prose {
+    font-size: 0.875rem;
+    line-height: 1.625;
+    color: var(--ink);
+    overflow-wrap: break-word;
+  }
+  .tiptap-prose p {
+    margin-bottom: 0.75rem;
+  }
+  .tiptap-prose > *:last-child {
+    margin-bottom: 0;
+  }
+  .tiptap-prose h1 {
+    margin: 1rem 0 0.5rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+  .tiptap-prose h2 {
+    margin: 1rem 0 0.5rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+  .tiptap-prose h3 {
+    margin: 0.75rem 0 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  .tiptap-prose h1:first-child,
+  .tiptap-prose h2:first-child,
+  .tiptap-prose h3:first-child {
+    margin-top: 0;
+  }
+  .tiptap-prose ul,
+  .tiptap-prose ol {
+    margin: 0 0 0.75rem 1.25rem;
+  }
+  .tiptap-prose ul {
+    list-style: disc;
+  }
+  .tiptap-prose ol {
+    list-style: decimal;
+  }
+  .tiptap-prose li + li {
+    margin-top: 0.25rem;
+  }
+  .tiptap-prose li > p {
+    margin-bottom: 0;
+  }
+  .tiptap-prose a {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .tiptap-prose blockquote {
+    margin: 0.75rem 0;
+    border: 1px solid var(--paper-rule);
+    background-color: var(--paper-sunk);
+    padding: 0.5rem 0.75rem;
+    font-style: italic;
+    color: var(--ink-soft);
+  }
+  .tiptap-prose hr {
+    margin: 1rem 0;
+    height: 1px;
+    border: 0;
+    background-color: var(--paper-rule);
+  }
+  .tiptap-prose pre {
+    margin: 0.75rem 0;
+    overflow-x: auto;
+    border: 1px solid var(--code-surface-rule);
+    background-color: var(--code-surface);
+    padding: 0.75rem;
+    font-size: 0.85em;
+    line-height: 1.625;
+  }
+  .tiptap-prose pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+  /* Placeholder (data-placeholder set by the Placeholder extension). */
+  .tiptap-prose p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+    color: var(--ink-faint);
+  }
 }
 
 @keyframes pulse-live {

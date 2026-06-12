@@ -34,12 +34,15 @@ export function DateTimePicker({
   id,
   placeholder = "Pick a date",
   className,
+  ghost = false,
 }: {
   value: string | null;
   onChange: (iso: string | null) => void;
   id?: string;
   placeholder?: string;
   className?: string;
+  /** Chromeless trigger — border only on focus, surface only on hover. */
+  ghost?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
 
@@ -73,7 +76,10 @@ export function DateTimePicker({
             id={id}
             aria-label={current ? displayLabel(current) : placeholder}
             className={cn(
-              "flex h-9 flex-1 items-center justify-between gap-2 border border-paper-rule bg-paper px-3 text-left text-sm outline-none transition-colors hover:bg-paper-sunk focus-visible:border-plot-red",
+              "flex items-center justify-between gap-2 border text-left text-sm outline-none transition-colors hover:bg-paper-sunk focus-visible:border-plot-red",
+              ghost
+                ? "h-7 w-fit border-transparent bg-transparent px-2"
+                : "h-9 flex-1 border-paper-rule bg-paper px-3",
               !current && "text-ink-faint"
             )}
           >

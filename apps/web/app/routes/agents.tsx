@@ -8,6 +8,7 @@ import {
   Boxes,
   ExternalLink,
   BookOpen,
+  MessageSquarePlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -66,6 +67,7 @@ import type { EmojiClickData } from "emoji-picker-react";
 import { DynamicIcon, iconNames, type IconName } from "lucide-react/dynamic";
 import { cn } from "@/app/lib/utils";
 import { Markdown } from "@/app/components/Markdown";
+import { MarkdownEditor } from "@/app/components/MarkdownEditor";
 import { FileWorkbench } from "@/app/files/FileWorkbench";
 import {
   FilePreviewDialog,
@@ -350,7 +352,6 @@ function AgentsPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<FormState>(FALLBACK_FORM);
-  const [isCustomModel, setIsCustomModel] = useState(false);
   // Tracks the urlImportTemplate the form has already been hydrated for, so
   // post-mount refreshes of `agents`/`providers` (which re-fire the URL effect)
   // can't race against the user's in-flight selections and reset the form.
@@ -433,25 +434,6 @@ function AgentsPage() {
   };
 
   // ── Derived ──────────────────────────────────────────────────────────────
-  const currentProvider = useMemo(
-    () => providers.find((p) => p.id === formData.provider),
-    [providers, formData.provider],
-  );
-
-  const presets: ModelPreset[] = currentProvider?.models ?? [];
-
-  // Mirrors the OpenRouter Claude detection in @openacme/llm-provider's
-  // registry. The OR is load-bearing, not defensive: OpenRouter ships floating
-  // aliases under the `~anthropic/claude-*-latest` prefix (tilde, not slash)
-  // which `startsWith("anthropic/")` misses but `includes("claude")` catches.
-  const isClaudeModel = useMemo(() => {
-    if (formData.provider === "anthropic") return true;
-    if (formData.provider === "openrouter") {
-      const m = formData.model.toLowerCase();
-      return m.startsWith("anthropic/") || m.includes("claude");
-    }
-    return false;
-  }, [formData.provider, formData.model]);
 
   const toolsByToolset = useMemo(() => {
     const map = new Map<string, ToolInfo[]>();
@@ -466,39 +448,6 @@ function AgentsPage() {
   }, [tools]);
 
   // ── Form helpers ─────────────────────────────────────────────────────────
-  const onProviderChange = (provider: string) => {
-    const nextProvider = providers.find((p) => p.id === provider);
-    const newPresets = nextProvider?.models ?? [];
-    const stillValid = newPresets.some((m) => m.id === formData.model);
-    // Auto-fallback OAuth → api_key if the new provider doesn't
-    // support OAuth (Google, OpenRouter, Ollama, custom).
-    const supportsOAuth = nextProvider?.supportsOAuth === true;
-    setFormData((prev) => ({
-      ...prev,
-      provider,
-      model: stillValid ? prev.model : (newPresets[0]?.id ?? ""),
-      auth: prev.auth === "oauth" && !supportsOAuth ? "api_key" : prev.auth,
-    }));
-    setIsCustomModel(stillValid ? isCustomModel : newPresets.length === 0);
-  };
-
-  const onModelSelect = (value: string) => {
-    // Radix Select auto-fires `onValueChange("")` when the current value is
-    // no longer in the option set — which happens during the same render
-    // we're updating both provider + model. Our SelectItems never carry
-    // an empty value, so an empty here means Radix's stale-clear, not a
-    // real user pick. Ignoring it preserves the model we set in
-    // `onProviderChange`.
-    if (!value) return;
-    if (value === CUSTOM_MODEL) {
-      setFormData((prev) => ({ ...prev, model: "" }));
-      setIsCustomModel(true);
-    } else {
-      setFormData((prev) => ({ ...prev, model: value }));
-      setIsCustomModel(false);
-    }
-  };
-
   const toggleTool = (name: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -720,13 +669,6 @@ function AgentsPage() {
     setIsEditing(false);
     // Restore form to the saved agent's state so re-opening the editor
     // doesn't surface in-progress edits the user said "cancel" to.
-    const provPresets =
-      providers.find((p) => p.id === selectedAgent.model.provider)?.models ??
-      [];
-    const matchedPreset = provPresets.some(
-      (m) => m.id === selectedAgent.model.model,
-    );
-    setIsCustomModel(!matchedPreset);
     setFormData({
       id: selectedAgent.id,
       name: selectedAgent.name,
@@ -826,9 +768,6 @@ function AgentsPage() {
             mcpServers: tpl.agentFields.mcpServers ?? {},
             mcpDisabled: tpl.agentFields.mcpDisabled ?? [],
           });
-          setIsCustomModel(
-            model !== "" && !provPresets.some((m) => m.id === model),
-          );
         } catch {
           toast.error("Failed to load template");
           void navigate({ to: "/agents", replace: true });
@@ -856,23 +795,16 @@ function AgentsPage() {
         provider: defaultProvider,
         model: defaultModel,
       });
-      setIsCustomModel(defaultModel === "");
       return;
     }
     if (urlId) {
       const found = agents.find((a) => a.id === urlId);
       if (found) {
-        const provPresets =
-          providers.find((p) => p.id === found.model.provider)?.models ?? [];
-        const matchedPreset = provPresets.some(
-          (m) => m.id === found.model.model,
-        );
         setSelectedAgent(found);
         setIsCreating(false);
         // View-first: don't auto-open into edit mode. The user clicks the
         // "Edit" button when they want to change something.
         setIsEditing(false);
-        setIsCustomModel(!matchedPreset);
         setFormData({
           id: found.id,
           name: found.name,
@@ -924,12 +856,6 @@ function AgentsPage() {
   // straight to the form (there's nothing to view yet).
   const showForm = isCreating || (selectedAgent !== null && isEditing);
   const showView = selectedAgent !== null && !isEditing && !isCreating;
-
-  // Select value: when in custom mode show CUSTOM_MODEL, otherwise the model id.
-  // Empty string would disable the trigger's "selected" state, so guard against it.
-  const modelSelectValue = isCustomModel
-    ? CUSTOM_MODEL
-    : formData.model || (presets[0]?.id ?? CUSTOM_MODEL);
 
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
@@ -1041,6 +967,7 @@ function AgentsPage() {
             {showView && selectedAgent ? (
               <AgentDetail
                 agent={selectedAgent}
+                providers={providers}
                 globalServers={globalMcp}
                 allSkills={allSkills}
                 toolGroups={toolsByToolset}
@@ -1059,7 +986,6 @@ function AgentsPage() {
                     replace: true,
                   })
                 }
-                onEdit={() => setIsEditing(true)}
                 onDelete={() => setConfirmDelete(selectedAgent.id)}
               />
             ) : showForm ? (
@@ -1121,173 +1047,17 @@ function AgentsPage() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label htmlFor="provider">Provider</Label>
-                      <Select
-                        value={formData.provider}
-                        onValueChange={onProviderChange}
-                      >
-                        <SelectTrigger id="provider">
-                          <SelectValue placeholder="Select a provider" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {providers.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="model">Model</Label>
-                      {presets.length > 0 ? (
-                        <Select
-                          value={modelSelectValue}
-                          onValueChange={onModelSelect}
-                        >
-                          <SelectTrigger id="model">
-                            <SelectValue placeholder="Select a model" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {presets.map((m) => (
-                              <SelectItem key={m.id} value={m.id}>
-                                <div className="flex flex-col items-start">
-                                  <span>{m.label}</span>
-                                  {m.hint && (
-                                    <span className="text-[10px] text-ink-soft">
-                                      {m.hint}
-                                    </span>
-                                  )}
-                                </div>
-                              </SelectItem>
-                            ))}
-                            <SelectItem value={CUSTOM_MODEL}>
-                              <span className="text-ink-soft">
-                                Custom model id…
-                              </span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : null}
-                      {(isCustomModel || presets.length === 0) && (
-                        <Input
-                          id={presets.length === 0 ? "model" : "model-custom"}
-                          value={formData.model}
-                          onChange={(e) =>
-                            setFormData({ ...formData, model: e.target.value })
-                          }
-                          placeholder="Enter model id"
-                          className="font-mono text-xs"
-                          required
-                        />
-                      )}
-                    </div>
-
-                    {/* Authentication — OAuth hidden when the selected
-                          provider doesn't support it. "Set it up" link goes
-                          to Settings where the actual sign-in lives. */}
-                    {(() => {
-                      const p = providers.find(
-                        (x) => x.id === formData.provider,
-                      );
-                      if (!p) return null;
-                      const supportsOAuth = p.supportsOAuth === true;
-                      const apiKeyConfigured = p.apiKeyConfigured === true;
-                      const oauthConfigured = p.oauthConfigured === true;
-                      const groupId = `agent-auth-${formData.id || "new"}`;
-                      return (
-                        <div className="grid gap-2 md:col-span-2">
-                          <Label>Authentication</Label>
-                          <RadioGroup
-                            value={formData.auth}
-                            onValueChange={(v) =>
-                              setFormData({
-                                ...formData,
-                                auth: v as "api_key" | "oauth",
-                              })
-                            }
-                          >
-                            <label
-                              htmlFor={`${groupId}-api_key`}
-                              className="flex items-start gap-2 text-sm cursor-pointer"
-                            >
-                              <RadioGroupItem
-                                value="api_key"
-                                id={`${groupId}-api_key`}
-                                className="mt-1"
-                              />
-                              <span className="flex-1">
-                                <span>API key</span>
-                                <span className="ml-2 font-mono text-[11px] text-ink-faint">
-                                  {apiKeyConfigured
-                                    ? "configured"
-                                    : p.envVar
-                                      ? `not configured (set ${p.envVar})`
-                                      : "no key needed"}
-                                </span>
-                              </span>
-                            </label>
-                            {supportsOAuth && (
-                              <label
-                                htmlFor={`${groupId}-oauth`}
-                                className="flex items-start gap-2 text-sm cursor-pointer"
-                              >
-                                <RadioGroupItem
-                                  value="oauth"
-                                  id={`${groupId}-oauth`}
-                                  className="mt-1"
-                                />
-                                <span className="flex-1">
-                                  <span>OAuth subscription</span>
-                                  <span className="ml-2 font-mono text-[11px] text-ink-faint">
-                                    {oauthConfigured
-                                      ? "signed in"
-                                      : "not signed in"}
-                                  </span>
-                                  {!oauthConfigured && (
-                                    <a
-                                      href="/settings"
-                                      className="ml-2 text-[11px] text-plot-red underline hover:no-underline"
-                                    >
-                                      Set up in Settings
-                                    </a>
-                                  )}
-                                </span>
-                              </label>
-                            )}
-                          </RadioGroup>
-                        </div>
-                      );
-                    })()}
-
-                    {isClaudeModel && (
-                      <div className="grid gap-2 md:col-span-2">
-                        <Label htmlFor="cacheTtl">Prompt cache TTL</Label>
-                        <Select
-                          value={formData.cacheTtl}
-                          onValueChange={(v) =>
-                            setFormData({
-                              ...formData,
-                              cacheTtl: v as CacheTtl,
-                            })
-                          }
-                        >
-                          <SelectTrigger id="cacheTtl" className="md:max-w-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="5m">
-                              5 minutes (default)
-                            </SelectItem>
-                            <SelectItem value="1h">1 hour</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
+                  <ModelConfigFields
+                    providers={providers}
+                    idPrefix={`agent-${formData.id || "new"}`}
+                    value={{
+                      provider: formData.provider,
+                      model: formData.model,
+                      auth: formData.auth,
+                      cacheTtl: formData.cacheTtl,
+                    }}
+                    onChange={(m) => setFormData((prev) => ({ ...prev, ...m }))}
+                  />
 
                   <div className="grid gap-2">
                     <Label htmlFor="role">
@@ -1309,15 +1079,16 @@ function AgentsPage() {
 
                   <div className="grid gap-2">
                     <Label htmlFor="persona">Persona</Label>
-                    <Textarea
-                      id="persona"
-                      value={formData.persona}
-                      onChange={(e) =>
-                        setFormData({ ...formData, persona: e.target.value })
-                      }
-                      placeholder="You are a helpful AI assistant."
-                      rows={4}
-                    />
+                    <div className="border border-paper-rule bg-paper px-3 py-2 transition-colors focus-within:border-plot-red">
+                      <MarkdownEditor
+                        value={formData.persona}
+                        onChange={(persona) =>
+                          setFormData({ ...formData, persona })
+                        }
+                        placeholder="You are a helpful AI assistant."
+                        contentClassName="min-h-[96px]"
+                      />
+                    </div>
                   </div>
 
                   {/* Tools / MCP / skills configuration lives on the detail
@@ -2080,44 +1851,102 @@ function NoAgentPicked() {
 }
 
 // ─── Read-only detail view ───────────────────────────────────────────────────
+interface AgentDraft {
+  name: string;
+  avatar: string;
+  role: string;
+  persona: string;
+  provider: string;
+  model: string;
+  auth: "api_key" | "oauth";
+  cacheTtl: CacheTtl;
+}
+
+function draftFromAgent(agent: Agent): AgentDraft {
+  return {
+    name: agent.name,
+    avatar: agent.avatar ?? "",
+    role: agent.role ?? "",
+    persona: agent.persona,
+    provider: agent.model.provider,
+    model: agent.model.model,
+    auth: agent.model.auth ?? "api_key",
+    cacheTtl: agent.model.cacheTtl ?? "5m",
+  };
+}
+
 function AgentDetail({
   agent,
+  providers,
   globalServers,
   allSkills,
   toolGroups,
   tab,
   onTabChange,
   onAgentUpdated,
-  onEdit,
   onDelete,
 }: {
   agent: Agent;
+  providers: ProviderInfo[];
   globalServers: Record<string, MCPServerConfigDto>;
   allSkills: SkillIndexEntry[];
   toolGroups: [string, ToolInfo[]][];
   tab: AgentTab;
   onTabChange: (tab: AgentTab) => void;
   onAgentUpdated: (updated: Agent) => void;
-  onEdit: () => void;
   onDelete: () => void;
 }) {
+  // View-is-the-editor: the Overview fields edit a shared draft; this
+  // one header Save covers name/avatar/model/role/persona together.
+  const [draft, setDraft] = useState<AgentDraft>(() => draftFromAgent(agent));
+  useEffect(() => {
+    setDraft(draftFromAgent(agent));
+  }, [agent]);
+  const { saving, save } = useSliceSave(agent, onAgentUpdated);
+  const saved = draftFromAgent(agent);
+  // Managed locks identity (name/avatar/role/persona) but model stays
+  // editable — dirty and the save payload track only what's allowed.
+  const dirty = agent.managed
+    ? draft.provider !== saved.provider ||
+      draft.model !== saved.model ||
+      draft.auth !== saved.auth ||
+      draft.cacheTtl !== saved.cacheTtl
+    : JSON.stringify(draft) !== JSON.stringify(saved);
   // Detail is ruled sections on the pane, not a floating card — one shared
   // measure with the skills + tasks detail panes.
   return (
     <div className="mx-auto max-w-6xl">
       <div className="flex flex-row items-start justify-between gap-4 pb-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
+          {/* Notion-style identity: avatar is the emoji picker, the title
+              is the name field — no separate Name/Avatar form inputs. */}
           <div className="flex flex-wrap items-center gap-2">
-            <CardTitle className="text-xl">
-              {agent.avatar && (
-                <AgentAvatar
-                  avatar={agent.avatar}
-                  size="xl"
-                  className="mr-2 align-[-2px]"
+            {agent.managed ? (
+              <CardTitle className="text-xl">
+                {agent.avatar && (
+                  <AgentAvatar
+                    avatar={agent.avatar}
+                    size="xl"
+                    className="mr-2 align-[-2px]"
+                  />
+                )}
+                {agent.name}
+              </CardTitle>
+            ) : (
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <AvatarField
+                  value={draft.avatar}
+                  onChange={(v) => setDraft({ ...draft, avatar: v })}
                 />
-              )}
-              {agent.name}
-            </CardTitle>
+                <input
+                  aria-label="Agent name"
+                  value={draft.name}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  placeholder="Agent name"
+                  className="w-full min-w-0 flex-1 border-0 bg-transparent px-0 text-xl font-semibold leading-snug text-ink outline-none placeholder:text-ink-faint"
+                />
+              </div>
+            )}
             {agent.managed && (
               <Badge variant="outline" className="font-mono text-[11px]">
                 Managed by OpenAcme
@@ -2134,18 +1963,47 @@ function AgentDetail({
             </span>
           </div>
         </div>
-        {!agent.managed && (
-          <div className="flex items-center gap-2 shrink-0">
-            <Button size="sm" onClick={onEdit}>
-              <Pencil className="size-4" />
-              Edit
-            </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/" search={{ agent: agent.id }}>
+              <MessageSquarePlus className="size-4" />
+              New chat
+            </Link>
+          </Button>
+          <Button
+            size="sm"
+            disabled={!dirty || saving}
+            onClick={() => {
+              const model = {
+                provider: draft.provider,
+                model: draft.model,
+                auth: draft.auth,
+                cacheTtl: draft.cacheTtl,
+              };
+              void save(
+                agent.managed
+                  ? { model }
+                  : {
+                      name: draft.name,
+                      avatar: draft.avatar,
+                      role: draft.role,
+                      persona: draft.persona,
+                      model,
+                    },
+                "Agent"
+              );
+            }}
+          >
+            <Save className="size-4" />
+            Save
+          </Button>
+          {!agent.managed && (
             <Button variant="ghost-destructive" size="sm" onClick={onDelete}>
               <Trash2 className="size-4" />
               Delete
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <Tabs
         value={tab}
@@ -2166,7 +2024,12 @@ function AgentDetail({
           <TabsTrigger value="resources">Resources</TabsTrigger>
         </TabsList>
         <TabsContent value="overview">
-          <AgentOverviewTab agent={agent} onSaved={onAgentUpdated} />
+          <AgentOverviewTab
+            agent={agent}
+            providers={providers}
+            draft={draft}
+            onDraftChange={setDraft}
+          />
         </TabsContent>
         <TabsContent value="tools">
           <AgentToolsTab
@@ -2206,10 +2069,14 @@ function AgentDetail({
 
 function AgentOverviewTab({
   agent,
-  onSaved,
+  providers,
+  draft,
+  onDraftChange,
 }: {
   agent: Agent;
-  onSaved: (updated: Agent) => void;
+  providers: ProviderInfo[];
+  draft: AgentDraft;
+  onDraftChange: (next: AgentDraft) => void;
 }) {
   // Persona prose references files ("use template.json") — linkify the
   // spans that resolve under the agent's roots, same as chat.
@@ -2225,105 +2092,63 @@ function AgentOverviewTab({
   const [previewTarget, setPreviewTarget] =
     useState<FilePreviewTarget | null>(null);
 
-  // Role + persona edit in place, same view-is-the-editor pattern as the
-  // config tabs; identity/model edits stay on the header's Edit form.
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({
-    role: agent.role ?? "",
-    persona: agent.persona,
-  });
-  useEffect(() => {
-    setEditing(false);
-    setDraft({ role: agent.role ?? "", persona: agent.persona });
-  }, [agent.id, agent.role, agent.persona]);
-  const { saving, save } = useSliceSave(agent, onSaved);
-  const dirty =
-    draft.role !== (agent.role ?? "") || draft.persona !== agent.persona;
-
+  // Same field set + order as the create form — view and edit are one
+  // surface; the header Save commits the shared draft. max-w keeps
+  // persona prose at a readable measure on wide panes.
   return (
     <>
-      <div className="divide-y divide-paper-rule [&>*]:py-5">
-        {(agent.role || editing) && (
-          <div>
-            <Label className="mb-1.5 block">
-              Role
-              <span className="ml-2 font-normal text-ink-faint">
-                visible to other agents
-              </span>
-            </Label>
-            {editing ? (
-              <Textarea
-                value={draft.role}
-                onChange={(e) => setDraft({ ...draft, role: e.target.value })}
-                rows={2}
-                placeholder="Third-person, one paragraph — what coworkers should know."
-              />
-            ) : (
-              <p className="text-[13px] leading-relaxed text-ink-soft">
-                {agent.role}
-              </p>
-            )}
-          </div>
-        )}
+      <div className="max-w-4xl space-y-5 py-5">
+        <ModelConfigFields
+          providers={providers}
+          idPrefix={`ov-${agent.id}`}
+          value={{
+            provider: draft.provider,
+            model: draft.model,
+            auth: draft.auth,
+            cacheTtl: draft.cacheTtl,
+          }}
+          onChange={(m) => onDraftChange({ ...draft, ...m })}
+        />
 
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <Label className="m-0 block">Persona</Label>
-            {!agent.managed && !editing && (
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                aria-label="Edit role and persona"
-                title="Edit role and persona"
-                className="p-1 text-ink-faint transition-colors hover:text-ink"
-              >
-                <Pencil className="size-3.5" aria-hidden />
-              </button>
-            )}
-          </div>
-          {editing ? (
-            <Textarea
-              value={draft.persona}
-              onChange={(e) => setDraft({ ...draft, persona: e.target.value })}
-              rows={12}
-              className="font-mono text-[12px]"
-            />
-          ) : (
-            <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
+        <div className="grid gap-2">
+          <Label htmlFor="ov-role">
+            Role
+            <span className="ml-2 font-normal text-ink-faint">
+              visible to other agents
+            </span>
+            {agent.managed && <ManagedFieldHint />}
+          </Label>
+          {/* Prose fields read as document, not form — chrome only while
+              focused (underline), never a full box. */}
+          <textarea
+            id="ov-role"
+            value={draft.role}
+            disabled={agent.managed}
+            onChange={(e) => onDraftChange({ ...draft, role: e.target.value })}
+            rows={3}
+            placeholder="Owns X. Good for Y. Redirects Z to @other-agent."
+            className="field-sizing-content w-full resize-none border-0 border-b border-transparent bg-transparent px-0 text-sm leading-relaxed text-ink outline-none placeholder:text-ink-faint focus:border-b-plot-red disabled:cursor-default disabled:text-ink-soft"
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="ov-persona">
+            Persona
+            {agent.managed && <ManagedFieldHint />}
+          </Label>
+          {agent.managed ? (
+            <div className="min-w-0 break-words text-[13px] leading-relaxed text-ink-soft">
               <Markdown fileLinks={fileLinks} onOpenFile={setPreviewTarget}>
                 {agent.persona}
               </Markdown>
             </div>
-          )}
-          {editing && (
-            <div className="mt-3 flex items-center gap-2">
-              <Button
-                size="sm"
-                disabled={saving || !dirty}
-                onClick={() =>
-                  void save(
-                    { role: draft.role, persona: draft.persona },
-                    "Persona"
-                  ).then((ok) => {
-                    if (ok) setEditing(false);
-                  })
-                }
-              >
-                <Save className="size-4" />
-                Save
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={saving}
-                onClick={() => {
-                  setDraft({ role: agent.role ?? "", persona: agent.persona });
-                  setEditing(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
+          ) : (
+            <MarkdownEditor
+              value={draft.persona}
+              onChange={(persona) => onDraftChange({ ...draft, persona })}
+              placeholder="You are… — type / for blocks"
+              contentClassName="min-h-[240px]"
+            />
           )}
         </div>
       </div>
@@ -2332,6 +2157,228 @@ function AgentOverviewTab({
         onClose={() => setPreviewTarget(null)}
       />
     </>
+  );
+}
+
+/** Inline "platform-owned" marker on locked fields of managed agents. */
+function ManagedFieldHint() {
+  return (
+    <span className="ml-2 font-mono text-[10px] font-normal uppercase tracking-[0.08em] text-ink-faint">
+      managed
+    </span>
+  );
+}
+
+interface ModelConfigValue {
+  provider: string;
+  model: string;
+  auth: "api_key" | "oauth";
+  cacheTtl: CacheTtl;
+}
+
+/** Provider / model / auth / cache-TTL pickers — one surface shared by the
+ *  create form and the always-editable agent Overview, so viewing and
+ *  editing an agent never look different. */
+function ModelConfigFields({
+  providers,
+  value,
+  onChange,
+  idPrefix,
+}: {
+  providers: ProviderInfo[];
+  value: ModelConfigValue;
+  onChange: (next: ModelConfigValue) => void;
+  idPrefix: string;
+}) {
+  const currentProvider = providers.find((p) => p.id === value.provider);
+  const presets: ModelPreset[] = currentProvider?.models ?? [];
+  // Derived, not latched: `providers` loads async, so a mount-time
+  // snapshot would strand a preset model in custom mode. Explicit custom
+  // is only the user's "Custom model id…" pick.
+  const [explicitCustom, setExplicitCustom] = useState(false);
+  const inPresets = presets.some((m) => m.id === value.model);
+  const customMode =
+    explicitCustom ||
+    presets.length === 0 ||
+    (!inPresets && value.model !== "");
+
+  // Mirrors the OpenRouter Claude detection in @openacme/llm-provider.
+  const isClaudeModel =
+    value.provider === "anthropic" ||
+    (value.provider === "openrouter" &&
+      (value.model.toLowerCase().startsWith("anthropic/") ||
+        value.model.toLowerCase().includes("claude")));
+
+  const onProviderChange = (provider: string) => {
+    const nextProvider = providers.find((p) => p.id === provider);
+    const newPresets = nextProvider?.models ?? [];
+    const stillValid = newPresets.some((m) => m.id === value.model);
+    const supportsOAuth = nextProvider?.supportsOAuth === true;
+    onChange({
+      ...value,
+      provider,
+      model: stillValid ? value.model : (newPresets[0]?.id ?? ""),
+      auth: value.auth === "oauth" && !supportsOAuth ? "api_key" : value.auth,
+    });
+    if (stillValid || newPresets.length > 0) setExplicitCustom(false);
+  };
+
+  const onModelSelect = (picked: string) => {
+    // Radix fires onValueChange("") when the current value drops out of
+    // the option set mid-update; our items never carry "" so ignore it.
+    if (!picked) return;
+    if (picked === CUSTOM_MODEL) {
+      onChange({ ...value, model: "" });
+      setExplicitCustom(true);
+    } else {
+      onChange({ ...value, model: picked });
+      setExplicitCustom(false);
+    }
+  };
+
+  const modelSelectValue = customMode
+    ? CUSTOM_MODEL
+    : value.model || (presets[0]?.id ?? CUSTOM_MODEL);
+
+  const supportsOAuth = currentProvider?.supportsOAuth === true;
+  const apiKeyConfigured = currentProvider?.apiKeyConfigured === true;
+  const oauthConfigured = currentProvider?.oauthConfigured === true;
+
+  return (
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+      <div className="grid gap-2">
+        <Label htmlFor={`${idPrefix}-provider`}>Provider</Label>
+        <Select value={value.provider} onValueChange={onProviderChange}>
+          <SelectTrigger id={`${idPrefix}-provider`}>
+            <SelectValue placeholder="Select a provider" />
+          </SelectTrigger>
+          <SelectContent>
+            {providers.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor={`${idPrefix}-model`}>Model</Label>
+        {presets.length > 0 && (
+          <Select value={modelSelectValue} onValueChange={onModelSelect}>
+            <SelectTrigger id={`${idPrefix}-model`}>
+              <SelectValue placeholder="Select a model" />
+            </SelectTrigger>
+            <SelectContent>
+              {presets.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  <div className="flex flex-col items-start">
+                    <span>{m.label}</span>
+                    {m.hint && (
+                      <span className="text-[10px] text-ink-soft">
+                        {m.hint}
+                      </span>
+                    )}
+                  </div>
+                </SelectItem>
+              ))}
+              <SelectItem value={CUSTOM_MODEL}>
+                <span className="text-ink-soft">Custom model id…</span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        {(customMode || presets.length === 0) && (
+          <Input
+            id={`${idPrefix}-model-custom`}
+            value={value.model}
+            onChange={(e) => onChange({ ...value, model: e.target.value })}
+            placeholder="Enter model id"
+            className="font-mono text-xs"
+            required
+          />
+        )}
+      </div>
+
+      {/* Authentication — OAuth hidden when the selected provider doesn't
+          support it; sign-in itself lives in Settings. */}
+      {currentProvider && (
+        <div className="grid gap-2 md:col-span-2">
+          <Label>Authentication</Label>
+          <RadioGroup
+            value={value.auth}
+            onValueChange={(v) =>
+              onChange({ ...value, auth: v as "api_key" | "oauth" })
+            }
+          >
+            <label
+              htmlFor={`${idPrefix}-auth-api_key`}
+              className="flex items-start gap-2 text-sm cursor-pointer"
+            >
+              <RadioGroupItem
+                value="api_key"
+                id={`${idPrefix}-auth-api_key`}
+                className="mt-1"
+              />
+              <span className="flex-1">
+                <span>API key</span>
+                <span className="ml-2 font-mono text-[11px] text-ink-faint">
+                  {apiKeyConfigured
+                    ? "configured"
+                    : currentProvider.envVar
+                      ? `not configured (set ${currentProvider.envVar})`
+                      : "no key needed"}
+                </span>
+              </span>
+            </label>
+            {supportsOAuth && (
+              <label
+                htmlFor={`${idPrefix}-auth-oauth`}
+                className="flex items-start gap-2 text-sm cursor-pointer"
+              >
+                <RadioGroupItem
+                  value="oauth"
+                  id={`${idPrefix}-auth-oauth`}
+                  className="mt-1"
+                />
+                <span className="flex-1">
+                  <span>OAuth subscription</span>
+                  <span className="ml-2 font-mono text-[11px] text-ink-faint">
+                    {oauthConfigured ? "signed in" : "not signed in"}
+                  </span>
+                  {!oauthConfigured && (
+                    <a
+                      href="/settings"
+                      className="ml-2 text-[11px] text-plot-red underline hover:no-underline"
+                    >
+                      Set up in Settings
+                    </a>
+                  )}
+                </span>
+              </label>
+            )}
+          </RadioGroup>
+        </div>
+      )}
+
+      {isClaudeModel && (
+        <div className="grid gap-2 md:col-span-2">
+          <Label htmlFor={`${idPrefix}-cacheTtl`}>Prompt cache TTL</Label>
+          <Select
+            value={value.cacheTtl}
+            onValueChange={(v) => onChange({ ...value, cacheTtl: v as CacheTtl })}
+          >
+            <SelectTrigger id={`${idPrefix}-cacheTtl`} className="md:max-w-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="5m">5 minutes (default)</SelectItem>
+              <SelectItem value="1h">1 hour</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </div>
   );
 }
 
