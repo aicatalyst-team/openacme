@@ -23,8 +23,8 @@ import {
   STATUS_ORDER,
   dueUrgencyClass,
   formatDate,
-  formatRelativeFutureFromIso,
-  shortRecurrenceLabel,
+  formatRelativeFromIso,
+  recurrenceTitle,
   type Task,
   type TaskStatus,
 } from "./types";
@@ -234,42 +234,46 @@ function BoardCard({
     >
       <ActiveMarker active={selected} />
       <div className="space-y-1">
-        <div className={cn("line-clamp-1 text-sm font-medium", titleClass)}>
+        <div className={cn("line-clamp-2 text-sm font-medium", titleClass)}>
           {task.title}
         </div>
+        {/* Card meta stays glanceable: who, urgency, why-not-running.
+            Team, past starts, and comment counts live in the detail pane. */}
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] tabular-nums text-ink-faint">
           <AgentRef id={task.assignee} />
-          {task.team && <span>#{task.team}</span>}
           {task.due_at && (
-            <span className={dueUrgencyClass(task.due_at)}>
-              due {formatDate(task.due_at)}
+            <span
+              className={dueUrgencyClass(task.due_at)}
+              title={formatDate(task.due_at)}
+            >
+              due {formatRelativeFromIso(task.due_at)}
             </span>
           )}
-          {task.start_at &&
-            (new Date(task.start_at).getTime() > Date.now() ? (
-              <span className="text-signal-blue">
-                starts {formatRelativeFutureFromIso(task.start_at)}
-              </span>
-            ) : (
-              <span>starts {formatDate(task.start_at)}</span>
-            ))}
-          {task.depends_on.length > 0 && (
+          {task.start_at && new Date(task.start_at).getTime() > Date.now() && (
+            <span
+              className="text-signal-blue"
+              title={formatDate(task.start_at)}
+            >
+              starts {formatRelativeFromIso(task.start_at)}
+            </span>
+          )}
+          {task.status === "blocked" && task.depends_on.length > 0 && (
             <span>
               {task.depends_on.length} dep
               {task.depends_on.length === 1 ? "" : "s"}
             </span>
           )}
-          {task.comment_count !== undefined && task.comment_count > 0 && (
-            <span>
-              {task.comment_count} comment
-              {task.comment_count === 1 ? "" : "s"}
-            </span>
-          )}
+          {/* Recurrence at card altitude is a marker, not a schedule:
+              icon only, schedule + run count in the tooltip. */}
           {task.recurrence && (
-            <span className="inline-flex items-center gap-0.5">
+            <span
+              title={
+                task.runs > 0
+                  ? `${recurrenceTitle(task.recurrence)} · ${task.runs} runs`
+                  : recurrenceTitle(task.recurrence)
+              }
+            >
               <Repeat2 className="size-3" />
-              {shortRecurrenceLabel(task.recurrence)}
-              {task.runs > 0 && ` · ${task.runs}×`}
             </span>
           )}
         </div>
