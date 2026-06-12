@@ -68,13 +68,30 @@ function formatDefer(unixSeconds: number | null): string | null {
   const now = Math.floor(Date.now() / 1000);
   const diff = unixSeconds - now;
   if (diff <= 0) return null;
-  if (diff < 60) return `quiet ${diff}s`;
+  if (diff < 60) return `wakes in ${diff}s`;
   const m = Math.floor(diff / 60);
-  if (m < 60) return `quiet ${m}m`;
+  if (m < 60) return `wakes in ${m}m`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `quiet ${h}h`;
+  if (h < 24) return `wakes in ${h}h`;
   const d = Math.floor(h / 24);
-  return `quiet ${d}d`;
+  return `wakes in ${d}d`;
+}
+
+/* Schedule meta as a status chip (hairline border, mono uppercase) so it
+ * reads as a badge, not a sentence fragment trailing the row title. */
+function ScheduleChip({
+  icon: Icon,
+  children,
+}: {
+  icon?: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 border border-paper-rule px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-signal-blue">
+      {Icon && <Icon className="size-3" aria-hidden />}
+      {children}
+    </span>
+  );
 }
 
 interface RowProps {
@@ -269,17 +286,13 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
         {/* Mobile-only meta line — quiet timer + task count badges. The
             relative timestamp already lives next to the agent line above. */}
         {(wakeLabel || s.pendingTaskCount > 0) && (
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.08em] md:hidden">
-            {wakeLabel && (
-              <span className="flex items-center gap-1 text-signal-blue">
-                <Clock className="size-3" aria-hidden />
-                {wakeLabel}
-              </span>
-            )}
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 md:hidden">
+            {wakeLabel && <ScheduleChip icon={Clock}>{wakeLabel}</ScheduleChip>}
             {s.pendingTaskCount > 0 && (
-              <span className="text-signal-blue">
-                {s.pendingTaskCount} task{s.pendingTaskCount === 1 ? "" : "s"}
-              </span>
+              <ScheduleChip>
+                {s.pendingTaskCount} task{s.pendingTaskCount === 1 ? "" : "s"}{" "}
+                queued
+              </ScheduleChip>
             )}
           </div>
         )}
@@ -287,17 +300,13 @@ function SessionRow({ s, onClick, onDelete, compact, active }: RowProps) {
       {/* Right meta — desktop only, one line so every row keeps the same
           height regardless of wake/task extras. Mobile pushes the same
           data into the title block's secondary lines. */}
-      <div className="hidden shrink-0 items-center gap-2 whitespace-nowrap pt-1 md:flex">
-        {wakeLabel && (
-          <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.08em] text-signal-blue">
-            <Clock className="size-3" aria-hidden />
-            {wakeLabel}
-          </span>
-        )}
+      <div className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap pt-1 md:flex">
+        {wakeLabel && <ScheduleChip icon={Clock}>{wakeLabel}</ScheduleChip>}
         {s.pendingTaskCount > 0 && (
-          <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-signal-blue">
-            {s.pendingTaskCount} task{s.pendingTaskCount === 1 ? "" : "s"}
-          </span>
+          <ScheduleChip>
+            {s.pendingTaskCount} task{s.pendingTaskCount === 1 ? "" : "s"}{" "}
+            queued
+          </ScheduleChip>
         )}
         <span className="w-16 text-right font-mono text-[11px] tabular-nums text-ink-faint">
           {formatRelative(s.lastActivity)}
