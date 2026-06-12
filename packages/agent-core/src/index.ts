@@ -68,6 +68,7 @@ export {
 export type { ClassifiedError, CompressionReason } from "./error-classifier.js";
 export type {
   TokenUsage,
+  UsageReport,
   AgentConfig,
   CompressionConfig,
   OpenAcmeDataParts,

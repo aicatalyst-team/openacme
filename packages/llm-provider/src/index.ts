@@ -4,6 +4,7 @@ export {
   getEffectiveContextWindow,
   isAnthropicLongContextDisabled,
   supportsToolResultMedia,
+  resolveAuthMode,
   type ProviderInfo,
 } from "./registry.js";
 export {

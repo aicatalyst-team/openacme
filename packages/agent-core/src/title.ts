@@ -30,6 +30,8 @@ const TITLE_MAX_OUTPUT_TOKENS = 64;
 
 export interface RunTitleArgs {
   parent: Agent;
+  /** Session the title is for — usage-ledger attribution. */
+  sessionId: string;
   userText: string;
   assistantText: string;
   abortSignal?: AbortSignal;
@@ -53,6 +55,7 @@ export async function runTitle(args: RunTitleArgs): Promise<string | null> {
     maxOutputTokens: TITLE_MAX_OUTPUT_TOKENS,
     timeoutMs: TITLE_TIMEOUT_MS,
     abortSignal: args.abortSignal,
+    usage: { kind: "title", sessionId: args.sessionId },
   });
 
   if (res.status !== "completed" || !res.object) {

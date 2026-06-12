@@ -41,6 +41,8 @@ const SelectionSchema = z.object({
 
 export interface FindRelevantMemoriesArgs {
   parent: Agent;
+  /** Session the recall is for — usage-ledger attribution. */
+  sessionId: string;
   /** Work-item description; trigger source is opaque. */
   triggerText: string;
   memoryDir: string;
@@ -91,6 +93,7 @@ async function selectFilenames(
     maxOutputTokens: SELECTOR_MAX_OUTPUT_TOKENS,
     timeoutMs: SELECTOR_TIMEOUT_MS,
     abortSignal: args.signal,
+    usage: { kind: "selector", sessionId: args.sessionId },
   });
 
   if (result.status !== "completed" || !result.object) {

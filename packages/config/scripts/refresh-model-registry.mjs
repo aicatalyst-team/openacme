@@ -88,6 +88,8 @@ async function main() {
         maxOutputTokens: pickNumber(entry?.limit?.output),
         inputCostPerMTok: pickNumber(entry?.cost?.input),
         outputCostPerMTok: pickNumber(entry?.cost?.output),
+        cacheReadCostPerMTok: pickNumber(entry?.cost?.cache_read),
+        cacheWriteCostPerMTok: pickNumber(entry?.cost?.cache_write),
         inputModalities: pickArray(entry?.modalities?.input),
         outputModalities: pickArray(entry?.modalities?.output),
         supportsAttachment: pickBool(entry?.attachment),

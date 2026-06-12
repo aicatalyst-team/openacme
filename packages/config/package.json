@@ -21,15 +21,18 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./telemetry-bootstrap": {
       "types": "./dist/telemetry-bootstrap.d.ts",
-      "import": "./dist/telemetry-bootstrap.js"
+      "import": "./dist/telemetry-bootstrap.js",
+      "default": "./dist/telemetry-bootstrap.js"
     },
     "./logger": {
       "types": "./dist/logger.d.ts",
-      "import": "./dist/logger.js"
+      "import": "./dist/logger.js",
+      "default": "./dist/logger.js"
     }
   },
   "files": [

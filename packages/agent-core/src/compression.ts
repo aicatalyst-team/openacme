@@ -1006,6 +1006,21 @@ export interface CompressOpts {
   mainModel: ModelConfig;
   /** Why we're compressing — useful for logging and edge-case handling. */
   reason: "proactive" | "payload_too_large" | "context_overflow";
+  /** Usage-ledger sink for the summarizer's generateText call(s). One
+   *  invocation per attempt (aux + fallback both report). Never throws
+   *  into the compression path — caller wraps. */
+  onUsage?: (report: {
+    model: ModelConfig;
+    tokens: {
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+      cachedInputTokens?: number;
+      cacheWriteTokens?: number;
+      reasoningTokens?: number;
+    };
+    durationMs: number;
+  }) => void;
 }
 
 export interface CompressResult {
@@ -1214,6 +1229,7 @@ export class Compressor {
       summaryBudget,
       primaryModel: summarizerModel,
       fallbackModel: mainModel,
+      onUsage: opts.onUsage,
     });
 
     // Phase 4: Build child message list.
@@ -1291,6 +1307,7 @@ export class Compressor {
     summaryBudget: number;
     primaryModel: ModelConfig;
     fallbackModel: ModelConfig;
+    onUsage?: CompressOpts["onUsage"];
   }): Promise<
     | { kind: "ok"; summary: string; usedFallback: boolean }
     | { kind: "err"; error: string }
@@ -1313,6 +1330,7 @@ export class Compressor {
     });
 
     const tryGen = async (m: ModelConfig): Promise<string> => {
+      const startedAt = Date.now();
       const res = await generateText({
         model: getModel(m),
         prompt,
@@ -1323,6 +1341,24 @@ export class Compressor {
           metadata: { model: modelLabel(m) },
         },
       });
+      try {
+        if (res.usage) {
+          opts.onUsage?.({
+            model: m,
+            tokens: {
+              inputTokens: res.usage.inputTokens,
+              outputTokens: res.usage.outputTokens,
+              totalTokens: res.usage.totalTokens,
+              cachedInputTokens: res.usage.inputTokenDetails?.cacheReadTokens,
+              cacheWriteTokens: res.usage.inputTokenDetails?.cacheWriteTokens,
+              reasoningTokens: res.usage.outputTokenDetails?.reasoningTokens,
+            },
+            durationMs: Date.now() - startedAt,
+          });
+        }
+      } catch {
+        // Ledger reporting must never fail a summarization attempt.
+      }
       return res.text.trim();
     };
 

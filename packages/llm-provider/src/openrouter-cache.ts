@@ -30,6 +30,24 @@ function buildMarker(ttl: CacheTtl): { type: "ephemeral"; ttl?: "1h" } {
   return ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
 }
 
+/**
+ * Ask OpenRouter to report actual usage + cost in the response
+ * (`usage.cost`, cached token counts). Powers the usage ledger's
+ * `provider_reported` cost source; without it OpenRouter omits cost and
+ * the ledger falls back to registry estimates.
+ */
+export function injectUsageAccounting(body: unknown): unknown {
+  if (typeof body !== "string") return body;
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>;
+    if (parsed["usage"] !== undefined) return body;
+    parsed["usage"] = { include: true };
+    return JSON.stringify(parsed);
+  } catch {
+    return body;
+  }
+}
+
 export function injectAnthropicCacheControl(
   body: unknown,
   ttl: CacheTtl = "5m",

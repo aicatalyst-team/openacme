@@ -42,6 +42,14 @@ export {
 
 export { DEFAULT_MODEL_BY_PROVIDER } from "./defaults.js";
 
+export {
+  computeUsageCost,
+  computeCacheSavings,
+  resolveUsageRates,
+  type UsageCostTokens,
+  type UsageCostRates,
+} from "./cost.js";
+
 export { createAgentStore, type AgentStore } from "./agent-store.js";
 
 export { createTeamStore, type TeamStore } from "./team-store.js";

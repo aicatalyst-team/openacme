@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import type { UsageKind } from "@openacme/db";
 
 /**
  * Token usage on a completed turn. Mirrors the AI SDK's usage shape (all
@@ -9,6 +10,33 @@ export interface TokenUsage {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
+  /** Cache-read tokens (subset of inputTokens). */
+  cachedInputTokens?: number;
+  /** Cache-write tokens (subset of inputTokens). */
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+}
+
+/**
+ * One LLM call's usage, reported through the injected `onUsage` callback
+ * (Agent deps). Raw token counts + the resolved model config — cost and
+ * auth-mode assembly happen at the recorder (AgentManager), keeping
+ * pricing/credential lookups out of agent-core.
+ */
+export interface UsageReport {
+  agentId: string;
+  sessionId: string;
+  kind: UsageKind;
+  /** Model the call actually used (modelOverride ?? config.model). */
+  model: import("@openacme/config").ModelConfig;
+  taskId?: string;
+  messageId?: string;
+  tokens: TokenUsage;
+  /** Actual cost when the provider reports it (OpenRouter usage
+   *  accounting); recorder prefers this over registry estimates. */
+  providerCostUsd?: number;
+  steps?: number;
+  durationMs?: number;
 }
 
 /**

@@ -1,6 +1,12 @@
-import { Agent, type AgentConfig } from "@openacme/agent-core";
+import {
+  Agent,
+  type AgentConfig,
+  type UsageReport,
+} from "@openacme/agent-core";
+import { resolveAuthMode } from "@openacme/llm-provider";
 import {
   compilePolicy,
+  computeUsageCost,
   createAgentStore,
   createTeamStore,
   describePolicy,
@@ -27,12 +33,15 @@ import {
   createEventStore,
   createInboxStore,
   createPushStore,
+  createUsageStore,
   type SessionStore,
   type MessageStore,
   type CommentStore,
   type EventStore,
   type InboxStore,
   type PushStore,
+  type UsageStore,
+  type UsageCostSource,
 } from "@openacme/db";
 import { createPushDispatcher, type PushDispatcher } from "./push.js";
 import { loadOrCreateVapidKeys, type VapidKeys } from "./utils/vapid.js";
@@ -142,6 +151,7 @@ export class AgentManager {
   readonly eventStore: EventStore;
   readonly inboxStore: InboxStore;
   readonly pushStore: PushStore;
+  readonly usageStore: UsageStore;
   readonly pushDispatcher: PushDispatcher;
   readonly vapid: VapidKeys;
   readonly attachmentsRoot: string;
@@ -193,6 +203,7 @@ export class AgentManager {
     this.eventStore = createEventStore(this.db);
     this.inboxStore = createInboxStore(this.db);
     this.pushStore = createPushStore(this.db);
+    this.usageStore = createUsageStore(this.db);
 
     // VAPID keys persist under `<dataDir>/push-vapid.json`, generated on
     // first boot. The dispatcher fans out to every subscribed device on
@@ -1750,7 +1761,81 @@ export class AgentManager {
       taskStore: this.taskStore,
       inboxStore: this.inboxStore,
       broadcaster: this.broadcaster,
+      onUsage: (report) => this.recordUsage(report),
     });
+  }
+
+  /**
+   * Usage-ledger recorder: the single sink behind every agent's
+   * `onUsage`. Resolves auth mode + cost here (pricing and credential
+   * lookups stay out of agent-core), persists, then broadcasts a
+   * `usage_event` so the web's live surfaces tick. Must never throw —
+   * metering failure cannot be allowed to break a turn.
+   */
+  private recordUsage(report: UsageReport): void {
+    try {
+      const t = report.tokens;
+      const authMode = resolveAuthMode(report.model);
+      const costTokens = {
+        inputTokens: t.inputTokens ?? 0,
+        outputTokens: t.outputTokens ?? 0,
+        cachedInputTokens: t.cachedInputTokens ?? 0,
+        cacheWriteTokens: t.cacheWriteTokens,
+      };
+      const equivalent = computeUsageCost(report.model, costTokens);
+      let costUsd: number | null;
+      let costSource: UsageCostSource;
+      if (authMode === "local") {
+        costUsd = null;
+        costSource = "free";
+      } else if (authMode === "oauth") {
+        costUsd = null;
+        costSource = "subscription";
+      } else if (report.providerCostUsd !== undefined) {
+        costUsd = report.providerCostUsd;
+        costSource = "provider_reported";
+      } else {
+        costUsd = equivalent;
+        costSource = "estimated";
+      }
+      const row = this.usageStore.record({
+        agentId: report.agentId,
+        sessionId: report.sessionId,
+        messageId: report.messageId ?? null,
+        taskId: report.taskId ?? null,
+        kind: report.kind,
+        provider: report.model.provider ?? "unknown",
+        model: report.model.model ?? "unknown",
+        authMode,
+        inputTokens: t.inputTokens ?? 0,
+        outputTokens: t.outputTokens ?? 0,
+        cachedInputTokens: t.cachedInputTokens ?? 0,
+        cacheWriteTokens: t.cacheWriteTokens ?? null,
+        reasoningTokens: t.reasoningTokens ?? null,
+        totalTokens:
+          t.totalTokens ?? (t.inputTokens ?? 0) + (t.outputTokens ?? 0),
+        costUsd,
+        costUsdEquivalent: equivalent,
+        costSource,
+        steps: report.steps ?? null,
+        durationMs: report.durationMs ?? null,
+      });
+      this.broadcaster.broadcast(report.sessionId, {
+        kind: "usage_event",
+        event: {
+          agentId: row.agentId,
+          usageKind: row.kind,
+          model: row.model,
+          costUsd: row.costUsd,
+          costUsdEquivalent: row.costUsdEquivalent,
+          totalTokens: row.totalTokens,
+          taskId: row.taskId,
+          createdAt: row.createdAt,
+        },
+      });
+    } catch (e) {
+      log.warn({ err: e, agentId: report.agentId }, "usage record failed");
+    }
   }
 
   // ── MCP OAuth wiring ─────────────────────────────────────────────────────
