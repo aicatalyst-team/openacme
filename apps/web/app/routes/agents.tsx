@@ -508,6 +508,13 @@ function AgentsPage() {
     }));
   };
 
+  const setToolGroup = (names: string[], checked: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      tools: setGroupSelection(prev.tools, names, checked),
+    }));
+  };
+
   const buildAgentBody = () => ({
     name: formData.name,
     avatar: formData.avatar.trim() || undefined,
@@ -1322,6 +1329,7 @@ function AgentsPage() {
                         groups={toolsByToolset}
                         selected={formData.tools}
                         onToggle={toggleTool}
+                        onSetGroup={setToolGroup}
                       />
 
                       <McpSection
@@ -1768,10 +1776,12 @@ function ToolPicker({
   groups,
   selected,
   onToggle,
+  onSetGroup,
 }: {
   groups: [string, ToolInfo[]][];
   selected: string[];
   onToggle: (name: string) => void;
+  onSetGroup: (names: string[], checked: boolean) => void;
 }) {
   if (groups.length === 0) {
     return (
@@ -1797,6 +1807,7 @@ function ToolPicker({
           const selectedInGroup = list.filter((t) =>
             selected.includes(t.name),
           ).length;
+          const allSelected = selectedInGroup === list.length;
           return (
             <div key={toolset}>
               <div className="mb-2 flex items-center gap-2">
@@ -1808,6 +1819,18 @@ function ToolPicker({
                     ({selectedInGroup}/{list.length})
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() =>
+                    onSetGroup(
+                      list.map((t) => t.name),
+                      !allSelected,
+                    )
+                  }
+                  className="ml-auto font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint underline-offset-2 transition-colors hover:text-ink hover:underline"
+                >
+                  {allSelected ? "Clear all" : "Select all"}
+                </button>
               </div>
               <div className="grid grid-cols-1 gap-px md:grid-cols-2">
                 {list.map((tool) => (
@@ -2385,6 +2408,15 @@ function useSliceSave(
   return { saving, save };
 }
 
+function setGroupSelection(
+  current: string[],
+  names: string[],
+  checked: boolean,
+): string[] {
+  if (!checked) return current.filter((t) => !names.includes(t));
+  return [...current, ...names.filter((n) => !current.includes(n))];
+}
+
 function sameStringSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   const set = new Set(a);
@@ -2434,6 +2466,9 @@ function AgentToolsTab({
               ? prev.filter((t) => t !== name)
               : [...prev, name]
           )
+        }
+        onSetGroup={(names, checked) =>
+          setSelected((prev) => setGroupSelection(prev, names, checked))
         }
       />
       <ConfigSaveBar
