@@ -19,6 +19,13 @@ import {
   DialogTitle,
 } from "@/app/components/ui/dialog";
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/app/components/ui/select";
 import { cn } from "@/app/lib/utils";
 import { TasksBoard } from "../tasks/board";
 import { TaskDetailPanel, type AgentOption } from "../tasks/detail";
@@ -52,6 +59,7 @@ function TasksPage() {
     "simple" | "cascade"
   >("simple");
   const [viewMode, setViewMode] = useState<ViewMode>("board");
+  const [teamFilter, setTeamFilter] = useState<string>("all");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -225,17 +233,28 @@ function TasksPage() {
     }
   };
 
+  const teams = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) if (t.team) set.add(t.team);
+    return [...set].sort();
+  }, [tasks]);
+
+  const visibleTasks = useMemo(() => {
+    if (teamFilter === "all") return tasks;
+    return tasks.filter((t) => t.team === teamFilter);
+  }, [tasks, teamFilter]);
+
   const grouped = useMemo(() => {
     const out = new Map<TaskStatus, Task[]>();
     for (const s of STATUS_ORDER) out.set(s, []);
-    for (const t of tasks) {
+    for (const t of visibleTasks) {
       out.get(t.status)?.push(t);
     }
     for (const list of out.values()) {
       list.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     }
     return out;
-  }, [tasks]);
+  }, [visibleTasks]);
 
 
   const dirty = !!(
@@ -262,6 +281,25 @@ function TasksPage() {
               Tasks
             </h1>
           </div>
+          <div className="flex items-center gap-2">
+          {teams.length > 0 && (
+            <Select value={teamFilter} onValueChange={setTeamFilter}>
+              <SelectTrigger
+                size="sm"
+                className="font-mono text-[11px] uppercase tracking-[0.08em]"
+              >
+                <SelectValue placeholder="Team" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All teams</SelectItem>
+                {teams.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <div className="inline-flex border border-paper-rule">
             <button
               onClick={() => setViewMode("board")}
@@ -288,6 +326,7 @@ function TasksPage() {
               List
             </button>
           </div>
+          </div>
         </header>
 
         {loading ? (
@@ -301,7 +340,7 @@ function TasksPage() {
           <EmptyTasksState />
         ) : viewMode === "board" ? (
           <TasksBoard
-            tasks={tasks}
+            tasks={visibleTasks}
             selectedId={selected?.id ?? null}
             onPick={(id) => void navigate({ to: "/tasks", search: { id } })}
             onMove={(id, target) => void moveStatus(id, target)}

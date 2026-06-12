@@ -48,7 +48,9 @@ export function TaskListRow({
         </span>
       </div>
       <div className="flex w-full flex-wrap gap-x-3 font-mono text-[11px] tabular-nums text-ink-faint">
+        <span>#{task.id}</span>
         <AgentRef id={task.assignee} />
+        {task.team && <span>{task.team}</span>}
         {task.due_at && (
           <span className={dueUrgencyClass(task.due_at)}>
             due {formatDate(task.due_at)}

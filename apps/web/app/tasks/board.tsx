@@ -96,10 +96,9 @@ export function TasksBoard({ tasks, selectedId, onPick, onMove }: TasksBoardProp
         handleDragEnd(e);
       }}
     >
-      {/* Columns stack vertically under md — a fixed 288px column already
-          overflows narrow phones, so the horizontal-scroll board is
-          desktop-only. */}
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 md:flex-row md:overflow-y-hidden md:overflow-x-auto">
+      {/* Columns stack vertically under md; at md+ all five columns split
+          the viewport width evenly so the board fits one screen. */}
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 md:flex-row md:overflow-hidden">
         {STATUS_ORDER.map((status) => (
           <BoardColumn
             key={status}
@@ -135,7 +134,7 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex w-full shrink-0 flex-col border border-paper-rule bg-paper-sunk transition-colors md:w-72",
+        "flex w-full shrink-0 flex-col border border-paper-rule bg-paper-sunk transition-colors md:min-w-0 md:flex-1",
         isOver && "border-plot-red bg-paper"
       )}
     >
@@ -238,8 +237,9 @@ function BoardCard({
           {task.title}
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] tabular-nums text-ink-faint">
+          <span>#{task.id}</span>
           <AgentRef id={task.assignee} />
-          {task.team && <span>#{task.team}</span>}
+          {task.team && <span>{task.team}</span>}
           {task.due_at && (
             <span className={dueUrgencyClass(task.due_at)}>
               due {formatDate(task.due_at)}
