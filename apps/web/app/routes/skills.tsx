@@ -1,7 +1,16 @@
 import { useState, useEffect, useMemo } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
-import { Plus, Search, Trash2, BookOpen, Compass, Pencil, Pipette } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Trash2,
+  BookOpen,
+  Compass,
+  Pipette,
+  Save,
+  X,
+} from "lucide-react";
 import { LoadingHairline } from "@/app/components/ui/loading-hairline";
 import { ActiveMarker } from "@/app/components/ui/active-marker";
 import { toast } from "sonner";
@@ -9,7 +18,6 @@ import { Sidebar } from "../components/Sidebar";
 import { API_BASE } from "../lib/api";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
-import { Textarea } from "@/app/components/ui/textarea";
 import { Label } from "@/app/components/ui/label";
 import { Badge } from "@/app/components/ui/badge";
 import {
@@ -31,13 +39,8 @@ import {
 } from "@/app/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/app/components/ui/tabs";
 import { cn } from "@/app/lib/utils";
-import { Markdown } from "../components/Markdown";
+import { MarkdownEditor } from "../components/MarkdownEditor";
 import { FileWorkbench } from "../files/FileWorkbench";
-import {
-  FilePreviewDialog,
-  type FilePreviewTarget,
-} from "../files/FilePreviewDialog";
-import { useFileLinkResolver } from "../files/useFileLinkResolver";
 import { BrowseTab } from "../skills/browse-tab";
 import { SourcesTab } from "../skills/sources-tab";
 
@@ -425,15 +428,14 @@ function SkillsPage() {
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="skill-body">Instructions (Markdown)</Label>
-                    <Textarea
-                      id="skill-body"
-                      value={formData.body}
-                      onChange={(e) =>
-                        setFormData({ ...formData, body: e.target.value })
-                      }
-                      placeholder="Detailed instructions for the agent…"
-                      rows={14}
-                    />
+                    <div className="border border-paper-rule bg-paper px-3 py-2 transition-colors focus-within:border-plot-red">
+                      <MarkdownEditor
+                        value={formData.body}
+                        onChange={(body) => setFormData({ ...formData, body })}
+                        placeholder="Detailed instructions for the agent…"
+                        contentClassName="min-h-[280px]"
+                      />
+                    </div>
                   </div>
                   <div className="flex gap-2 justify-end">
                     <Button variant="outline" onClick={() => void navigate({ to: "/skills" })}>
@@ -449,43 +451,17 @@ function SkillsPage() {
             ) : selectedSkill ? (
               // Ruled sections on the pane, not a floating card — same
               // measure + treatment as the agents + tasks detail panes.
-              <div className="mx-auto max-w-5xl">
-                  <div className="flex flex-row items-start justify-between gap-4 pb-2">
-                    <div>
-                      <CardTitle className="text-xl">{selectedSkill.name}</CardTitle>
-                      <CardDescription className="mt-1.5">
-                        {selectedSkill.description}
-                      </CardDescription>
-                      {selectedSkill.tags.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {selectedSkill.tags.map((tag) => (
-                            <Badge key={tag} variant="outline">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost-destructive"
-                      size="sm"
-                      onClick={() => setConfirmDelete(selectedSkill.name)}
-                    >
-                      <Trash2 className="size-4" />
-                      Delete
-                    </Button>
-                  </div>
-                  <SkillDetailTabs
-                    skill={selectedSkill}
-                    onPickRelated={(name) =>
-                      void navigate({ to: "/skills", search: { name } })
-                    }
-                    onSaved={(updated) => {
-                      setSelectedSkill(updated);
-                      void loadSkills();
-                    }}
-                  />
-              </div>
+              <SkillDetailPanel
+                skill={selectedSkill}
+                onDeleteClick={() => setConfirmDelete(selectedSkill.name)}
+                onPickRelated={(name) =>
+                  void navigate({ to: "/skills", search: { name } })
+                }
+                onSaved={(updated) => {
+                  setSelectedSkill(updated);
+                  void loadSkills();
+                }}
+              />
             ) : skills.length === 0 ? (
               <EmptySkillsState onCreate={() => void navigate({ to: "/skills", search: { create: "1" } })} />
             ) : (
@@ -532,46 +508,37 @@ function SkillsPage() {
   );
 }
 
-function SkillDetailTabs({
+function SkillDetailPanel({
   skill,
+  onDeleteClick,
   onPickRelated,
   onSaved,
 }: {
   skill: Skill;
+  onDeleteClick: () => void;
   onPickRelated: (name: string) => void;
   onSaved: (updated: Skill) => void;
 }) {
-  // SKILL.md bodies reference sibling files ("see references/api.md") —
-  // linkify spans that resolve inside the skill's folder.
-  const linkOwner = useMemo(
-    () => ({ kind: "skill", id: skill.name }) as const,
-    [skill.name]
-  );
-  const linkSources = useMemo(
-    () => [{ id: skill.name, text: skill.body }],
-    [skill.name, skill.body]
-  );
-  const fileLinks = useFileLinkResolver(linkOwner, linkSources);
-  const [previewTarget, setPreviewTarget] =
-    useState<FilePreviewTarget | null>(null);
-
-  // View-is-the-editor: pencil flips the body/description/tags into
-  // fields, PUT /api/skills/:name persists. Name is fixed (folder id).
-  const [editing, setEditing] = useState(false);
+  // View-is-the-editor: every field edits in place; the header Save
+  // enables once anything diverges. Name is fixed (folder id).
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
     description: skill.description,
-    tags: skill.tags.join(", "),
+    tags: skill.tags,
     body: skill.body,
   });
   useEffect(() => {
-    setEditing(false);
     setDraft({
       description: skill.description,
-      tags: skill.tags.join(", "),
+      tags: skill.tags,
       body: skill.body,
     });
   }, [skill.name, skill.description, skill.tags, skill.body]);
+
+  const dirty =
+    draft.description !== skill.description ||
+    draft.body !== skill.body ||
+    draft.tags.join(" ") !== skill.tags.join(" ");
 
   const saveSkill = async () => {
     setSaving(true);
@@ -583,10 +550,7 @@ function SkillDetailTabs({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             description: draft.description.trim(),
-            tags: draft.tags
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean),
+            tags: draft.tags,
             body: draft.body,
           }),
         }
@@ -598,7 +562,6 @@ function SkillDetailTabs({
         throw new Error(data.error || res.statusText);
       }
       onSaved((await res.json()) as Skill);
-      setEditing(false);
       toast.success("Skill updated");
     } catch (err) {
       toast.error("Failed to update skill", {
@@ -610,6 +573,112 @@ function SkillDetailTabs({
   };
 
   return (
+    <div className="mx-auto max-w-5xl">
+      <div className="flex flex-row items-start justify-between gap-4 pb-2">
+        <div className="min-w-0 flex-1">
+          <CardTitle className="text-xl">{skill.name}</CardTitle>
+          <input
+            aria-label="Description"
+            value={draft.description}
+            onChange={(e) =>
+              setDraft({ ...draft, description: e.target.value })
+            }
+            placeholder="One-line description…"
+            className="mt-1.5 w-full border-0 bg-transparent px-0 text-sm text-ink-soft outline-none placeholder:text-ink-faint"
+          />
+          <TagsEditor
+            tags={draft.tags}
+            onChange={(tags) => setDraft({ ...draft, tags })}
+          />
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            size="sm"
+            disabled={!dirty || saving}
+            onClick={() => void saveSkill()}
+          >
+            {saving ? <LoadingHairline inline /> : <Save className="size-4" />}
+            Save
+          </Button>
+          <Button variant="ghost-destructive" size="sm" onClick={onDeleteClick}>
+            <Trash2 className="size-4" />
+            Delete
+          </Button>
+        </div>
+      </div>
+      <SkillDetailTabs
+        skill={skill}
+        body={draft.body}
+        onBodyChange={(body) => setDraft({ ...draft, body })}
+        onPickRelated={onPickRelated}
+      />
+    </div>
+  );
+}
+
+/* Chips with inline add — click a chip's × to remove, type + Enter (or
+ * comma) to add, Backspace on the empty input removes the last chip. */
+function TagsEditor({
+  tags,
+  onChange,
+}: {
+  tags: string[];
+  onChange: (tags: string[]) => void;
+}) {
+  const [input, setInput] = useState("");
+
+  const commit = () => {
+    const t = input.trim().replace(/,+$/, "");
+    if (t && !tags.includes(t)) onChange([...tags, t]);
+    setInput("");
+  };
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {tags.map((tag) => (
+        <Badge key={tag} variant="outline" className="gap-1 pr-1">
+          {tag}
+          <button
+            type="button"
+            aria-label={`Remove tag ${tag}`}
+            onClick={() => onChange(tags.filter((t) => t !== tag))}
+            className="inline-flex items-center p-0.5 text-ink-faint transition-colors hover:text-plot-red"
+          >
+            <X className="size-3" />
+          </button>
+        </Badge>
+      ))}
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Backspace" && !input && tags.length > 0) {
+            onChange(tags.slice(0, -1));
+          }
+        }}
+        onBlur={commit}
+        placeholder={tags.length === 0 ? "Add tags…" : "+ tag"}
+        className="h-6 w-24 border-0 bg-transparent px-1 font-mono text-[11px] text-ink outline-none placeholder:text-ink-faint"
+      />
+    </div>
+  );
+}
+
+function SkillDetailTabs({
+  skill,
+  body,
+  onBodyChange,
+  onPickRelated,
+}: {
+  skill: Skill;
+  body: string;
+  onBodyChange: (body: string) => void;
+  onPickRelated: (name: string) => void;
+}) {
+  return (
     <>
       <Tabs defaultValue="skill" className="mt-1">
         <TabsList>
@@ -618,85 +687,14 @@ function SkillDetailTabs({
         </TabsList>
         <TabsContent value="skill">
           <div className="space-y-4">
-            {!editing && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setEditing(true)}
-                  aria-label="Edit skill"
-                  title="Edit skill"
-                  className="p-1 text-ink-faint transition-colors hover:text-ink"
-                >
-                  <Pencil className="size-3.5" aria-hidden />
-                </button>
-              </div>
-            )}
-            {editing ? (
-              <div className="space-y-3">
-                <div className="grid gap-2">
-                  <Label htmlFor="skill-edit-desc">Description</Label>
-                  <Input
-                    id="skill-edit-desc"
-                    value={draft.description}
-                    onChange={(e) =>
-                      setDraft({ ...draft, description: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="skill-edit-tags">
-                    Tags (comma-separated)
-                  </Label>
-                  <Input
-                    id="skill-edit-tags"
-                    value={draft.tags}
-                    onChange={(e) =>
-                      setDraft({ ...draft, tags: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="skill-edit-body">
-                    Instructions (Markdown)
-                  </Label>
-                  <Textarea
-                    id="skill-edit-body"
-                    value={draft.body}
-                    onChange={(e) =>
-                      setDraft({ ...draft, body: e.target.value })
-                    }
-                    rows={16}
-                    className="font-mono text-[12px]"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" disabled={saving} onClick={() => void saveSkill()}>
-                    Save
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={saving}
-                    onClick={() => {
-                      setDraft({
-                        description: skill.description,
-                        tags: skill.tags.join(", "),
-                        body: skill.body,
-                      });
-                      setEditing(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="border border-paper-rule bg-paper-sunk px-4 py-3 text-[13px] leading-relaxed text-ink">
-                <Markdown fileLinks={fileLinks} onOpenFile={setPreviewTarget}>
-                  {skill.body || "(No instructions)"}
-                </Markdown>
-              </div>
-            )}
+            <div className="border-t border-paper-rule pt-4">
+              <MarkdownEditor
+                value={body}
+                onChange={onBodyChange}
+                placeholder="Detailed instructions for the agent — type / for blocks…"
+                contentClassName="min-h-[280px]"
+              />
+            </div>
 
             {skill.relatedSkills.length > 0 && (
               <div>
@@ -728,10 +726,6 @@ function SkillDetailTabs({
           )}
         </TabsContent>
       </Tabs>
-      <FilePreviewDialog
-        target={previewTarget}
-        onClose={() => setPreviewTarget(null)}
-      />
     </>
   );
 }

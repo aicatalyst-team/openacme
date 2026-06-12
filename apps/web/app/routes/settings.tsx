@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import {
   Check,
   Key,
@@ -153,9 +154,27 @@ function statePillClass(state: McpServerStatus["state"]): string {
   }
 }
 
-export const Route = createFileRoute("/settings")({ component: SettingsPage });
+const SETTINGS_TABS = [
+  "api-keys",
+  "server",
+  "providers",
+  "mcp",
+  "web-search",
+  "browser",
+  "notifications",
+  "context",
+] as const;
+
+export const Route = createFileRoute("/settings")({
+  validateSearch: z.object({
+    tab: z.enum(SETTINGS_TABS).optional().catch(undefined),
+  }),
+  component: SettingsPage,
+});
 
 function SettingsPage() {
+  const navigate = useNavigate();
+  const activeTab = Route.useSearch().tab ?? "api-keys";
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [configuredKeys, setConfiguredKeys] = useState<Record<string, boolean>>({});
@@ -844,7 +863,14 @@ function SettingsPage() {
         </header>
 
         <Tabs
-          defaultValue="api-keys"
+          value={activeTab}
+          onValueChange={(tab) =>
+            void navigate({
+              to: "/settings",
+              search: { tab: tab as (typeof SETTINGS_TABS)[number] },
+              replace: true,
+            })
+          }
           orientation="vertical"
           className="flex flex-1 flex-col overflow-hidden md:flex-row"
         >

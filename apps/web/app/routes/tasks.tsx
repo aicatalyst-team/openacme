@@ -128,8 +128,14 @@ function TasksPage() {
     try {
       const res = await fetch(`${API_BASE}/api/agents`, { signal });
       if (!res.ok) return;
-      const list = (await res.json()) as { id: string; name: string }[];
-      setAgents(list.map((a) => ({ id: a.id, name: a.name })));
+      const list = (await res.json()) as {
+        id: string;
+        name: string;
+        avatar?: string;
+      }[];
+      setAgents(
+        list.map((a) => ({ id: a.id, name: a.name, avatar: a.avatar }))
+      );
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
       // non-fatal: assignee select falls back to current value
@@ -179,11 +185,16 @@ function TasksPage() {
         body: draft.body ?? "",
         status: draft.status,
         assignee: draft.assignee,
-        session_id: draft.session_id,
         start_at: draft.start_at,
         due_at: draft.due_at,
         recurrence: draft.recurrence,
       };
+      // Only send session_id when the user deliberately changed it
+      // (unbind). An untouched value would read as an explicit bind and
+      // defeat the store's clear-session-on-reassign invariant.
+      if (selected && draft.session_id !== selected.session_id) {
+        patch.session_id = draft.session_id;
+      }
       const res = await fetch(`${API_BASE}/api/tasks/${draft.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },

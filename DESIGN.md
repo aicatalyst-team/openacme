@@ -248,11 +248,24 @@ There is none. `box-shadow` is forbidden in this system. Focus rings are the onl
 - **Focus:** 2px `plot-red` solid offset outline, 0 inset. Visible on every interactive control without exception.
 
 ### Inputs / Fields
+
+Two tiers. Pick by surface, not by habit.
+
+**Form fields** — settings panes, creation dialogs, anything that reads as "configure then submit":
 - **Style:** `paper` background in light / `graphite-raised` in dark. 1px `paper-rule` / `graphite-rule` border. 0px radius. Geist Sans 14px text. Padding `8px 12px`.
 - **Label:** Geist Mono UPPERCASE 11px, tracked, sitting above the input with a 4px gap. Always present; placeholders are not labels.
 - **Focus:** Border becomes `plot-red`. No glow, no shadow. The border-color shift is the affordance.
 - **Error:** Border becomes `destructive`. Inline error message in `destructive` Geist Sans 13px below the field.
 - **Disabled:** `ink-faint` text, `paper-sunk` background, no border color change.
+
+**In-place fields** — detail panes for a single entity (task, agent, skill, team). The view IS the editor; don't render a settings form around an object the user is reading:
+- **No edit mode.** No pencil toggle, no separate read vs. edit layout. Every editable field is live; a single header **Save** enables when any field diverges from the saved entity (per-field comparison, not a blanket flag).
+- **Titles** are chromeless inputs at heading scale — no border, no background, placeholder in `ink-faint`.
+- **Property rows** (status, assignee, dates) use ghost triggers: transparent border/background at rest, `paper-sunk` on hover, `plot-red` border on focus. Negative-margin the hover surface so values stay column-aligned with their labels.
+- **Prose / markdown bodies** edit in place via the WYSIWYG editor (`.tiptap-prose`), styled identically to the read-only renderer — editing and reading are the same picture.
+- **Identity affordances** are direct: the avatar is the avatar picker, the title is the name field (Notion-style). No duplicate "Name" / "Avatar" form inputs below.
+- **Locked fields on managed entities** keep the same layout, rendered disabled with a `MANAGED` mono hint — uniform geometry, not a different page.
+- **Hard rule:** never show the same field twice (once as text, once as input), and never make the user click "Edit" to discover what's editable.
 
 ### Chips
 - **ID Chip:** Mono surface for identifiers (session IDs, agent IDs, request IDs, hashes). `paper-sunk` background, `ink-soft` text, Geist Mono 12px, `2px 6px` padding, 0 radius. Always copy-on-click. Never decorated.
@@ -361,7 +374,7 @@ Each of the following is a *primitive* — a named, reusable move. Use the exist
 #### Materiality
 
 - **`.paper-surface`** — applies a barely-visible fractal-noise overlay (~2% opacity in light, ~5% in dark) to a region. Use on body so every page reads as a surface. Use on inset panels for additional tooth. Never apply twice in the same hierarchy.
-- **`.paper-ruled`** — repeating 1px hairlines every 24px at ~35% paper-rule alpha. Use sparingly: the daemon footer manifest, a persona textarea, a recent-activity timeline. Don't apply globally.
+- **`.paper-ruled`** — repeating 1px hairlines every 24px at ~35% paper-rule alpha. Use sparingly: the daemon footer manifest, a persona editor, a recent-activity timeline. Don't apply globally.
 - **Code surface tint** — inline `<code>` and `<pre>` sit on a slightly cooler tint than `paper-sunk`, with a 1px hairline border. Use everywhere code appears: chat messages, persona drafts, ID chips.
 - **`::selection`** — a ~18% plot-red wash. One selection treatment for the whole product.
 

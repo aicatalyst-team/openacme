@@ -1067,6 +1067,9 @@ function ChatPage() {
                     msg.role === "assistant" &&
                     i === messages.length - 1
                   }
+                  pingAnswered={messages
+                    .slice(i + 1)
+                    .some((m) => m.role === "user")}
                   fileLinks={fileLinks}
                   onOpenFile={setPreviewTarget}
                 />
@@ -1455,12 +1458,15 @@ const MessageBubble = memo(function MessageBubble({
   message,
   agent,
   isStreaming,
+  pingAnswered = false,
   fileLinks,
   onOpenFile,
 }: {
   message: UIMessage;
   agent?: Agent;
   isStreaming: boolean;
+  /** A user message exists after this one — pings are no longer urgent. */
+  pingAnswered?: boolean;
   fileLinks?: Map<string, FileLinkTarget>;
   onOpenFile?: (target: FileLinkTarget) => void;
 }) {
@@ -1666,6 +1672,7 @@ const MessageBubble = memo(function MessageBubble({
           <PingUserCallout
             key={`ping-${i}`}
             part={part as unknown as ToolPart}
+            answered={pingAnswered}
           />
         ))}
       </div>

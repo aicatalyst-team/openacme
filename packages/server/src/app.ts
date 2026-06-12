@@ -705,7 +705,7 @@ export async function createApp(config: Config): Promise<{ app: Hono; manager: A
     const id = c.req.param("id");
     const def = manager.agentStore.get(id);
     if (!def) return c.json({ error: "Agent not found" }, 404);
-    await manager.reinitMCPForAgent(id);
+    await manager.queueMcpReinit(id);
     const servers = manager.getMcpClient(id)?.getStatus() ?? [];
     return c.json({ agentId: id, servers });
   });
@@ -816,9 +816,12 @@ export async function createApp(config: Config): Promise<{ app: Hono; manager: A
       validated[name] = result.data;
     }
     saveGlobalMcpServers(config.dataDir, validated);
-    for (const def of manager.listAgents()) {
-      await manager.reinitMCPForAgent(def.id);
-    }
+    // Reinit in the background — N agents × connect retries can take
+    // minutes, and the catalog write is already durable. The UI polls
+    // /api/mcp/status to watch connections come up.
+    void Promise.all(
+      manager.listAgents().map((def) => manager.queueMcpReinit(def.id))
+    );
     return c.json({ mcpServers: validated });
   });
 

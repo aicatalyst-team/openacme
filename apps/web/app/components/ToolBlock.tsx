@@ -118,7 +118,14 @@ function KnownToolBlock({
 // of where the call fired mid-turn. The ping is the agent's attention signal;
 // inline it drowns under whatever narration follows it.
 
-export function PingUserCallout({ part }: { part: ToolPart }) {
+export function PingUserCallout({
+  part,
+  answered = false,
+}: {
+  part: ToolPart;
+  /** A user message followed this ping — drop the urgent treatment. */
+  answered?: boolean;
+}) {
   const msg = isObj(part.input) ? str(part.input.message) : undefined;
   if (!msg) return <ToolBlock part={part} />;
   const out = parseJsonish(part.output);
@@ -129,11 +136,32 @@ export function PingUserCallout({ part }: { part: ToolPart }) {
         ? str(out.error)
         : undefined;
   return (
-    <div className="border border-plot-red section-enter">
-      <div className="flex items-center gap-2 bg-plot-red/[0.06] px-3 py-1.5">
-        <Bell className="size-3.5 shrink-0 text-plot-red" aria-hidden />
-        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-plot-red">
-          Needs your input
+    <div
+      className={cn(
+        "section-enter border",
+        answered ? "border-paper-rule" : "border-plot-red"
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center gap-2 px-3 py-1.5",
+          answered ? "bg-paper-sunk" : "bg-plot-red/[0.06]"
+        )}
+      >
+        <Bell
+          className={cn(
+            "size-3.5 shrink-0",
+            answered ? "text-ink-faint" : "text-plot-red"
+          )}
+          aria-hidden
+        />
+        <span
+          className={cn(
+            "font-mono text-[10px] uppercase tracking-[0.08em]",
+            answered ? "text-ink-faint" : "text-plot-red"
+          )}
+        >
+          {answered ? "Asked for input" : "Needs your input"}
         </span>
       </div>
       <div className="border-t border-paper-rule px-3 py-2 text-sm leading-relaxed text-ink break-words">
