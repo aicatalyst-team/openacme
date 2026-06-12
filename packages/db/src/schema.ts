@@ -1,11 +1,22 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  integer,
+  real,
+  index,
+} from "drizzle-orm/sqlite-core";
 import {
   COMMENT_KINDS,
   EVENT_KINDS,
   INBOX_KINDS,
   INBOX_SOURCES,
 } from "@openacme/tasks";
+import {
+  USAGE_KINDS,
+  USAGE_AUTH_MODES,
+  USAGE_COST_SOURCES,
+} from "./usage-kinds.js";
 
 /**
  * Drizzle schema definitions. Source of truth for the structured tables;
@@ -220,6 +231,57 @@ export const pushSubscriptions = sqliteTable(
   }
 );
 
+/**
+ * Usage ledger: one row per LLM call (turn or overhead subagent call).
+ * Deliberately NO foreign keys — deleting a session (or a compression
+ * fork getting cleaned up) must not erase spend history; the ledger
+ * outlives the conversations that produced it. `session_id` /
+ * `message_id` / `task_id` are plain reference labels for drill-down
+ * while the referent exists.
+ *
+ * `input_tokens` is the provider-reported TOTAL input including cache
+ * reads and writes (the Anthropic adapter's convention); uncached input
+ * = input − cached_input − cache_write. `cost_usd` is real spend (null
+ * for subscription/local); `cost_usd_equivalent` is registry list price
+ * whenever pricing is known, regardless of auth mode.
+ */
+export const usageEvents = sqliteTable(
+  "usage_events",
+  {
+    id: text("id").primaryKey(),
+    createdAt: integer("created_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+    agentId: text("agent_id").notNull(),
+    sessionId: text("session_id").notNull(),
+    messageId: text("message_id"),
+    taskId: text("task_id"),
+    /** Drizzle `enum` is a TS hint only. Source of truth:
+     *  `USAGE_KINDS` in `./usage-kinds.ts`. */
+    kind: text("kind", { enum: USAGE_KINDS }).notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    authMode: text("auth_mode", { enum: USAGE_AUTH_MODES }).notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
+    cacheWriteTokens: integer("cache_write_tokens"),
+    reasoningTokens: integer("reasoning_tokens"),
+    totalTokens: integer("total_tokens").notNull().default(0),
+    costUsd: real("cost_usd"),
+    costUsdEquivalent: real("cost_usd_equivalent"),
+    costSource: text("cost_source", { enum: USAGE_COST_SOURCES }).notNull(),
+    steps: integer("steps"),
+    durationMs: integer("duration_ms"),
+  },
+  (t) => [
+    index("idx_usage_created").on(t.createdAt),
+    index("idx_usage_agent_created").on(t.agentId, t.createdAt),
+    index("idx_usage_session").on(t.sessionId),
+    index("idx_usage_task").on(t.taskId),
+  ]
+);
+
 // Schema-derived types. `$inferSelect` is what comes out of a query;
 // `$inferInsert` is what callers pass in (defaults / nullables become
 // optional, the rest stay required). The `parts` column is JSON-stringified
@@ -238,3 +300,5 @@ export type AgentInboxRow = typeof agentInbox.$inferSelect;
 export type NewAgentInboxRow = typeof agentInbox.$inferInsert;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type NewPushSubscriptionRow = typeof pushSubscriptions.$inferInsert;
+export type UsageEventRow = typeof usageEvents.$inferSelect;
+export type NewUsageEventRow = typeof usageEvents.$inferInsert;

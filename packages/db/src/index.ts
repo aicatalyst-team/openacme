@@ -40,6 +40,27 @@ export {
   type PushSubscriptionRow,
 } from "./stores/push-store.js";
 export {
+  createUsageStore,
+  type UsageStore,
+  type UsageEventInput,
+  type UsageEventRow,
+  type UsageFilter,
+  type UsageTotals,
+  type UsageSeriesRow,
+  type UsageBreakdownRow,
+  type UsageGroupBy,
+  type DailyAgentCost,
+  type AgentHourCell,
+} from "./stores/usage-store.js";
+export {
+  USAGE_KINDS,
+  USAGE_AUTH_MODES,
+  USAGE_COST_SOURCES,
+  type UsageKind,
+  type UsageAuthMode,
+  type UsageCostSource,
+} from "./usage-kinds.js";
+export {
   sessions,
   messages,
   userProfiles,
@@ -47,6 +68,7 @@ export {
   taskEvents,
   agentInbox,
   pushSubscriptions,
+  usageEvents,
   type NewSession,
   type MessageRow,
   type NewMessageRow,

@@ -19,7 +19,10 @@ import {
   transformCodexOAuthBody,
   tryReimportClaudeCode,
 } from "@openacme/auth";
-import { injectAnthropicCacheControl } from "./openrouter-cache.js";
+import {
+  injectAnthropicCacheControl,
+  injectUsageAccounting,
+} from "./openrouter-cache.js";
 import { anthropicCacheMiddleware } from "./anthropic-cache.js";
 
 const log = createLogger("llm-provider");
@@ -172,6 +175,37 @@ function shouldUseOAuth(
     return !!readAuthFile(dataDir)[provider]?.access_token;
   } catch {
     return false;
+  }
+}
+
+/**
+ * How a call to this model is billed, for the usage ledger's `auth_mode`
+ * column. `local` = no money moves (ollama); `oauth` = subscription-billed
+ * (Claude Pro / ChatGPT — no marginal dollar cost); `api_key` = metered.
+ * Uses the same resolution as the request path (`shouldUseOAuth`), so the
+ * ledger row matches how the call was actually authenticated.
+ */
+export function resolveAuthMode(
+  config: ModelConfig
+): "api_key" | "oauth" | "local" {
+  switch (config.provider) {
+    case "ollama":
+      return "local";
+    case "openai":
+      return shouldUseOAuth("openai", config, "OPENAI_API_KEY", resolveDataDir())
+        ? "oauth"
+        : "api_key";
+    case "anthropic":
+      return shouldUseOAuth(
+        "anthropic",
+        config,
+        "ANTHROPIC_API_KEY",
+        resolveDataDir()
+      )
+        ? "oauth"
+        : "api_key";
+    default:
+      return "api_key";
   }
 }
 
@@ -523,22 +557,22 @@ const providerFactories: Record<
         "X-Title": "OpenAcme Agent",
         ...config.headers,
       },
-      // Anthropic models routed via OpenRouter accept native `cache_control`
-      // on chat-completions content blocks, but the openai-compatible adapter
-      // won't translate `providerOptions.anthropic.cacheControl` for us.
-      // Inject at the wire level for Claude-family models only.
-      ...(isClaudeModel
-        ? {
-            fetch: async (url, init) => {
-              const newBody = injectAnthropicCacheControl(init?.body, config.cacheTtl);
-              const rewritten =
-                init && newBody !== init.body
-                  ? { ...init, body: newBody as RequestInit["body"] }
-                  : init;
-              return fetch(url as string | URL, rewritten);
-            },
-          }
-        : {}),
+      // Wire-level body rewrites the openai-compatible adapter can't do:
+      // `usage: {include: true}` on every request (OpenRouter then reports
+      // actual cost + cached tokens — the ledger's provider_reported
+      // source), plus native `cache_control` markers for Claude-family
+      // models (the adapter won't translate providerOptions for us).
+      fetch: async (url, init) => {
+        let newBody = injectUsageAccounting(init?.body);
+        if (isClaudeModel) {
+          newBody = injectAnthropicCacheControl(newBody, config.cacheTtl);
+        }
+        const rewritten =
+          init && newBody !== init.body
+            ? { ...init, body: newBody as RequestInit["body"] }
+            : init;
+        return fetch(url as string | URL, rewritten);
+      },
     });
     return provider(config.model);
   },

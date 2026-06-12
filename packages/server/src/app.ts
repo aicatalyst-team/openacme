@@ -38,6 +38,7 @@ import { registerAgentCatalogRoutes } from "./routes/agent-catalog.js";
 import { registerStreamRoutes } from "./routes/streams.js";
 import { registerHomeRoutes } from "./routes/home.js";
 import { registerPushRoutes } from "./routes/push.js";
+import { registerUsageRoutes } from "./routes/usage.js";
 import { SkillHub, HubError } from "@openacme/skills";
 import {
   AgentDefinitionSchema,
@@ -179,6 +180,9 @@ export async function createApp(config: Config): Promise<{ app: Hono; manager: A
   // shared authMiddleware so tunnel-exposed deployments require the
   // same access secret as everything under /api/.
   registerPushRoutes(app, manager);
+
+  // Usage ledger reads: summary / series / breakdown / heatmap / events.
+  registerUsageRoutes(app, manager);
 
   // Health check
   app.get("/api/health", (c) =>
@@ -1680,6 +1684,7 @@ async function runChatTurn(args: {
       const agent = manager.getAgent(agentId);
 
       const recall = await agent.applyMemoryRecall({
+        sessionId,
         history,
         signal,
       });
@@ -1704,6 +1709,7 @@ async function runChatTurn(args: {
         sessionId,
         history,
         signal,
+        usage: { kind: "interactive", messageId: responseMessageId },
         onError: ({ error }) => {
           capturedError = error;
         },

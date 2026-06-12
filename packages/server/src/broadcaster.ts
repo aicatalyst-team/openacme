@@ -82,6 +82,22 @@ export type SessionBroadcastEvent =
        *  so optimistically. */
       kind: "inbox_cancelled";
       messageId: string;
+    }
+  | {
+      /** One LLM call landed in the usage ledger. Rides both the
+       *  per-session and workforce streams; the web's usage surfaces
+       *  (page, sidebar readout) debounce-refetch on it. */
+      kind: "usage_event";
+      event: {
+        agentId: string;
+        usageKind: string;
+        model: string;
+        costUsd: number | null;
+        costUsdEquivalent: number | null;
+        totalTokens: number;
+        taskId: string | null;
+        createdAt: number;
+      };
     };
 
 export interface BroadcastEnvelope {

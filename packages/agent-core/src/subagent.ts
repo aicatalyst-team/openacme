@@ -20,6 +20,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { z, type ZodTypeAny } from "zod";
 import { getModel, resolveSubagentModel } from "@openacme/llm-provider";
+import type { UsageKind } from "@openacme/db";
 import type { Agent } from "./agent.js";
 import type { TokenUsage } from "./types.js";
 
@@ -53,6 +54,10 @@ export interface ForkedSubagentArgs extends CommonArgs {
   toolFilter?: ReadonlySet<string>;
   /** Telemetry tag override. Default uses parent's tag. */
   telemetryFunctionId?: string;
+  /** Usage-ledger kind for the fork's LLM call (e.g. "extractor").
+   *  Forwarded into the parent's runStream seam — the fork itself
+   *  never records. */
+  usageKind?: UsageKind;
 }
 
 export interface StructuredSubagentArgs<S extends ZodTypeAny>
@@ -64,6 +69,10 @@ export interface StructuredSubagentArgs<S extends ZodTypeAny>
   /** Output schema — validation failure → `status: "failed"`. */
   schema: S;
   maxOutputTokens?: number;
+  /** Usage-ledger attribution. generateObject bypasses the runStream
+   *  seam, so structured calls record via `parent.reportUsage` — but
+   *  only when the caller supplies this (the ledger needs a session). */
+  usage?: { kind: UsageKind; sessionId: string; taskId?: string };
 }
 
 export type SubagentArgs<S extends ZodTypeAny = ZodTypeAny> =
@@ -147,6 +156,7 @@ async function runForked(
       toolFilter: args.toolFilter,
       telemetryFunctionId: args.telemetryFunctionId,
       modelOverride: resolveSubagentModel(args.parent.config.model),
+      ...(args.usageKind ? { usage: { kind: args.usageKind } } : {}),
     });
 
     const stream = result.toUIMessageStream({ sendStart: false });
@@ -218,9 +228,11 @@ async function runStructured<S extends ZodTypeAny>(
   combined: AbortSignal,
   timeoutSignal: AbortSignal
 ): Promise<StructuredSubagentResult<z.infer<S>>> {
+  const startedAt = Date.now();
   try {
+    const subagentModel = resolveSubagentModel(args.parent.config.model);
     const result = await generateObject({
-      model: getModel(resolveSubagentModel(args.parent.config.model)),
+      model: getModel(subagentModel),
       system: args.system,
       schema: args.schema,
       messages: [{ role: "user", content: args.user }],
@@ -231,6 +243,25 @@ async function runStructured<S extends ZodTypeAny>(
         functionId: `${args.parent.config.id}:subagent.structured`,
       },
     });
+    if (args.usage && result.usage) {
+      args.parent.reportUsage({
+        agentId: args.parent.config.id,
+        sessionId: args.usage.sessionId,
+        kind: args.usage.kind,
+        model: subagentModel,
+        taskId: args.usage.taskId,
+        tokens: {
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          totalTokens: result.usage.totalTokens,
+          cachedInputTokens: result.usage.inputTokenDetails?.cacheReadTokens,
+          cacheWriteTokens: result.usage.inputTokenDetails?.cacheWriteTokens,
+          reasoningTokens: result.usage.outputTokenDetails?.reasoningTokens,
+        },
+        steps: 1,
+        durationMs: Date.now() - startedAt,
+      });
+    }
     return {
       mode: "structured",
       status: "completed",

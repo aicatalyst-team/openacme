@@ -31,6 +31,7 @@ import type {
   StoredUIMessage,
   InboxStore,
   InboxRow,
+  UsageKind,
 } from "@openacme/db";
 import { buildSystemPrompt } from "./prompt.js";
 import { Compressor, resolveThreshold } from "./compression.js";
@@ -48,11 +49,36 @@ import {
   ensureStepBoundaries,
   finalizeOrphanToolParts,
 } from "./messages.js";
-import type { AgentConfig, MessageMetadata, TokenUsage } from "./types.js";
+import type {
+  AgentConfig,
+  MessageMetadata,
+  TokenUsage,
+  UsageReport,
+} from "./types.js";
 
 const log = createLogger("agent-core.agent");
 
 const DEFAULT_AUTONOMOUS_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Sum per-step provider-reported cost (OpenRouter usage accounting puts
+ * `cost` in each step's raw usage). Undefined when no step reports one —
+ * the recorder then falls back to registry-estimated pricing.
+ */
+function sumProviderReportedCost(
+  steps: ReadonlyArray<{ usage: { raw?: unknown } }>
+): number | undefined {
+  let sum = 0;
+  let found = false;
+  for (const step of steps) {
+    const raw = step.usage.raw as { cost?: unknown } | undefined;
+    if (raw && typeof raw.cost === "number" && Number.isFinite(raw.cost)) {
+      sum += raw.cost;
+      found = true;
+    }
+  }
+  return found ? sum : undefined;
+}
 
 // Recall budgets (ports of Claude Code RELEVANT_MEMORIES_CONFIG +
 // MAX_MEMORY_BYTES/LINES from utils/attachments.ts). Per-memory caps
@@ -258,6 +284,7 @@ export class Agent {
   readonly taskStore: TaskStore;
   readonly inboxStore: InboxStore;
   readonly broadcaster: AutonomousBroadcaster | null;
+  private readonly onUsage: ((report: UsageReport) => void) | null;
   readonly compressor = new Compressor();
   private cachedSystemPrompts = new Map<string, string>();
   // Cursor: id of the last assistant covered by an extractor run.
@@ -291,6 +318,11 @@ export class Agent {
        *  see the run live. Interactive turns don't use this — the
        *  caller already consumes the stream directly. */
       broadcaster?: AutonomousBroadcaster | null;
+      /** Usage-ledger sink. Fired once per LLM call (streamText turns,
+       *  structured subagent calls, the compression summarizer) with raw
+       *  token counts; the recorder computes cost + persists. Must never
+       *  throw into the turn — calls are wrapped. */
+      onUsage?: (report: UsageReport) => void;
     }
   ) {
     this.config = config;
@@ -302,6 +334,21 @@ export class Agent {
     this.taskStore = deps.taskStore;
     this.inboxStore = deps.inboxStore;
     this.broadcaster = deps.broadcaster ?? null;
+    this.onUsage = deps.onUsage ?? null;
+  }
+
+  /**
+   * Report one LLM call to the usage ledger. The two non-streamText call
+   * sites (structured subagents, compression summarizer) call this
+   * directly; streamText turns go through `runStream`'s onFinish.
+   */
+  reportUsage(report: UsageReport): void {
+    if (!this.onUsage) return;
+    try {
+      this.onUsage(report);
+    } catch (e) {
+      log.warn({ err: e, agentId: this.config.id }, "usage report failed");
+    }
   }
 
   /** `history` MUST end in the new user message. Caller drives the returned stream. */
@@ -326,6 +373,12 @@ export class Agent {
      *  stream consumers — use this to capture full error context
      *  (`statusCode`, `responseBody`) that wrapper layers strip. */
     onError?: Parameters<typeof streamText>[0]["onError"];
+    /** Usage-ledger attribution for this call. Defaults to kind
+     *  "interactive". Callers never record themselves — the single
+     *  recording seam is this method's internal onFinish, so every
+     *  streamText path (interactive, autonomous, forked subagents)
+     *  produces exactly one ledger row. */
+    usage?: { kind?: UsageKind; taskId?: string; messageId?: string };
   }): Promise<StreamTextResult<ToolSet, never>> {
     const effectiveToolNames = opts.toolFilter
       ? this.config.tools.filter((t) => opts.toolFilter!.has(t))
@@ -352,8 +405,11 @@ export class Agent {
 
     const system = this.getSystemPrompt(opts.sessionId);
 
+    const usageModel = opts.modelOverride ?? this.config.model;
+    const startedAt = Date.now();
+
     return streamText({
-      model: getModel(opts.modelOverride ?? this.config.model),
+      model: getModel(usageModel),
       system,
       messages,
       tools: tools as Parameters<typeof streamText>[0]["tools"],
@@ -362,6 +418,32 @@ export class Agent {
       abortSignal: opts.signal,
       prepareStep: opts.prepareStep,
       onError: opts.onError,
+      onFinish: (event) => {
+        // The ledger uses totalUsage (all steps), not the final-step
+        // `result.usage` — multi-step turns would under-count. Aborted
+        // turns never reach onFinish: no row (accepted v1 loss).
+        const u = event.totalUsage;
+        if (!u) return;
+        this.reportUsage({
+          agentId: this.config.id,
+          sessionId: opts.sessionId,
+          kind: opts.usage?.kind ?? "interactive",
+          model: usageModel,
+          taskId: opts.usage?.taskId,
+          messageId: opts.usage?.messageId,
+          tokens: {
+            inputTokens: u.inputTokens,
+            outputTokens: u.outputTokens,
+            totalTokens: u.totalTokens,
+            cachedInputTokens: u.inputTokenDetails?.cacheReadTokens,
+            cacheWriteTokens: u.inputTokenDetails?.cacheWriteTokens,
+            reasoningTokens: u.outputTokenDetails?.reasoningTokens,
+          },
+          providerCostUsd: sumProviderReportedCost(event.steps ?? []),
+          steps: event.steps?.length,
+          durationMs: Date.now() - startedAt,
+        });
+      },
       experimental_telemetry: {
         isEnabled: true,
         functionId: opts.telemetryFunctionId ?? this.config.id,
@@ -401,6 +483,16 @@ export class Agent {
       session_id: opts.sessionId,
       status: "in_progress",
     })[0];
+    // Usage-ledger attribution: at first wake the task is still `open`
+    // (the agent claims via task_update mid-turn), so fall back to the
+    // open task this session was allocated for. Recall and failure
+    // attribution keep keying off in_progress only.
+    const usageTask =
+      inProgress ??
+      this.taskStore.list({
+        session_id: opts.sessionId,
+        status: "open",
+      })[0];
 
     // Drain the per-agent inbox. Every event emit fans out a row here
     // (see AgentManager's `eventStore.onEmit` hook, with same-agent
@@ -636,6 +728,7 @@ export class Agent {
 
     const recall = inProgress
       ? await this.applyMemoryRecall({
+          sessionId,
           history,
           signal: timeoutAbort.signal,
           triggerText: inProgress.title,
@@ -728,6 +821,7 @@ export class Agent {
         history,
         signal: timeoutAbort.signal,
         prepareStep,
+        usage: { kind: "autonomous", taskId: usageTask?.id },
       });
 
       // Hand-rolling from `fullStream` skips step boundaries that
@@ -970,6 +1064,16 @@ export class Agent {
       config: this.config.compression,
       mainModel: this.config.model,
       reason,
+      onUsage: (u) =>
+        this.reportUsage({
+          agentId: this.config.id,
+          sessionId: parentSessionId,
+          kind: "summarizer",
+          model: u.model,
+          tokens: u.tokens,
+          steps: 1,
+          durationMs: u.durationMs,
+        }),
     });
 
     if (result.noOp || result.childMessages.length === 0) {
@@ -1189,8 +1293,10 @@ export class Agent {
             "Pre-compaction memory flush. Older messages in this conversation will be summarized away shortly. Use the `memory` tool to save any durable facts, preferences, decisions, or environment details that should survive into future sessions. If nothing is worth saving, respond with a single word and stop.",
         },
       ];
-      await generateText({
-        model: getModel(resolveSubagentModel(this.config.model)),
+      const flushModel = resolveSubagentModel(this.config.model);
+      const flushStarted = Date.now();
+      const flushRes = await generateText({
+        model: getModel(flushModel),
         system,
         messages: flushMessages,
         tools: tools as Parameters<typeof generateText>[0]["tools"],
@@ -1201,6 +1307,27 @@ export class Agent {
           metadata: { sessionId },
         },
       });
+      // Same ledger kind as the post-turn extractor: both are
+      // memory-maintenance overhead on the subagent model.
+      const fu = flushRes.totalUsage;
+      if (fu) {
+        this.reportUsage({
+          agentId: this.config.id,
+          sessionId,
+          kind: "extractor",
+          model: flushModel,
+          tokens: {
+            inputTokens: fu.inputTokens,
+            outputTokens: fu.outputTokens,
+            totalTokens: fu.totalTokens,
+            cachedInputTokens: fu.inputTokenDetails?.cacheReadTokens,
+            cacheWriteTokens: fu.inputTokenDetails?.cacheWriteTokens,
+            reasoningTokens: fu.outputTokenDetails?.reasoningTokens,
+          },
+          steps: flushRes.steps?.length,
+          durationMs: Date.now() - flushStarted,
+        });
+      }
     } catch (e) {
       // Body kept verbatim — referenced in CLAUDE.md / agent-core rules.
       log.warn(
@@ -1297,6 +1424,9 @@ export class Agent {
    * throws, returns empty when nothing is selectable.
    */
   async applyMemoryRecall(opts: {
+    /** Session the recall serves — usage-ledger attribution for the
+     *  selector's LLM call. */
+    sessionId: string;
     history: UIMessage[];
     signal?: AbortSignal;
     /** Override the inferred trigger text (chat: last user text;
@@ -1325,6 +1455,7 @@ export class Agent {
     try {
       selected = await findRelevantMemories({
         parent: this,
+        sessionId: opts.sessionId,
         triggerText,
         memoryDir,
         recentTools: opts.recentTools,
@@ -1477,6 +1608,7 @@ export class Agent {
     this.titleInProgress.add(opts.sessionId);
     void runTitle({
       parent: this,
+      sessionId: opts.sessionId,
       userText,
       assistantText,
       abortSignal: opts.abortSignal,

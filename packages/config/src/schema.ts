@@ -364,6 +364,10 @@ export const ModelMetadataSchema = z.object({
   inputCostPerMTok: z.number().optional(),
   /** USD per million output tokens. Source: `cost.output`. */
   outputCostPerMTok: z.number().optional(),
+  /** USD per million cached-read input tokens. Source: `cost.cache_read`. */
+  cacheReadCostPerMTok: z.number().optional(),
+  /** USD per million cache-write input tokens. Source: `cost.cache_write`. */
+  cacheWriteCostPerMTok: z.number().optional(),
   /** Allowed input modalities — e.g. ["text", "image", "pdf"]. */
   inputModalities: z.array(z.string()).optional(),
   /** Allowed output modalities — e.g. ["text"]. */

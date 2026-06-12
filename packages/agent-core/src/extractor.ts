@@ -138,6 +138,7 @@ export async function runExtractor(
       abortSignal: args.abortSignal,
       toolFilter: EXTRACTOR_TOOLS,
       telemetryFunctionId: `${args.agent.config.id}:subagent.forked.extractor`,
+      usageKind: "extractor",
     });
   } catch (e) {
     return {
