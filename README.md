@@ -16,9 +16,12 @@ Not a single assistant. Not a fixed team of four. A *workforce* — named agents
 
 ![demo](docs/images/demo.gif)
 
+<a href="https://github.com/sandydasari/openacme/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/sandydasari/openacme/actions/workflows/ci.yml/badge.svg"></a>
 <a href="https://www.npmjs.com/package/@openacme/cli"><img alt="npm" src="https://img.shields.io/npm/v/@openacme/cli?logo=npm&logoColor=white&color=cb3837&label=%40openacme%2Fcli"></a>
 <a href="./LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
 <img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white">
+<img alt="pnpm" src="https://img.shields.io/badge/pnpm-9-f69220?logo=pnpm&logoColor=white">
+<img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript&logoColor=white">
 <img alt="macOS / Linux" src="https://img.shields.io/badge/os-macOS%20%2F%20Linux-black?logo=apple&logoColor=white">
 
 <sub>`Local-first` · `Bring-your-own-model` · `MCP-native` · `Multi-agent`</sub>

@@ -1,4 +1,4 @@
-export { Agent, AutonomousTurnTimeout } from "./agent.js";
+export { Agent, AutonomousTurnTimeout, type ModelResolver } from "./agent.js";
 export {
   buildSystemPrompt,
   TEAM_CHARTER_CHAR_LIMIT,

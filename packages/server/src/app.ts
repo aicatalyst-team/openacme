@@ -22,6 +22,7 @@ import {
   extractStatusCode,
   finalizeOrphanToolParts,
   sanitizeStoredHistory,
+  type ModelResolver,
   type OpenAcmeUIMessage,
 } from "@openacme/agent-core";
 import { AgentManager } from "./agent-manager.js";
@@ -112,9 +113,12 @@ export interface ConfigModelUpdateResponse {
 /**
  * Create the Hono HTTP app with all API routes.
  */
-export async function createApp(config: Config): Promise<{ app: Hono; manager: AgentManager }> {
+export async function createApp(
+  config: Config,
+  opts?: { resolveModel?: ModelResolver; tickIntervalMs?: number }
+): Promise<{ app: Hono; manager: AgentManager }> {
   const app = new Hono();
-  const manager = new AgentManager(config);
+  const manager = new AgentManager(config, opts);
 
   // Per-session abort handles for in-flight interactive turns. Survives
   // the HTTP request that initiated the turn — SSE-only streaming means

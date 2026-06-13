@@ -10,6 +10,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
+    "test:e2e": "pnpm --filter @openacme/server test:e2e",
+    "test:e2e:web": "pnpm --filter web test:e2e",
     "agent": "pnpm --filter @openacme/cli cli",
     "changeset": "changeset",
     "version-packages": "changeset version",
