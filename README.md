@@ -10,7 +10,7 @@
   <img src="docs/images/logo-text.svg" alt="OpenAcme" width="240">
 </picture>
 
-### An AI workforce. You're the founder.
+### An AI workforce. You're in charge.
 
 Not a single assistant. Not a fixed team of four. A *workforce* — named agents with roles, models, tools, and memory — that scales the way you want it to and self-organizes through delegation. Hand the top of the org chart a goal; it breaks the work down and assigns it. You steer.
 
@@ -103,11 +103,13 @@ npm install -g @openacme/cli
 Then, from anywhere:
 
 ```sh
-openacme setup       # interactive wizard — pick a provider, configure your first agent
+openacme setup       # interactive wizard — connect a provider, sign in, pick a default model
 openacme             # start the background daemon + open the web UI
 ```
 
 That's it. The daemon registers itself with launchd (macOS) or systemd-user (Linux), auto-starts at login, auto-restarts on crash. Running `openacme` again is idempotent.
+
+You start with **Acme**, a built-in helper. Hire the rest of your workforce from the web UI — write a role from scratch, or import a ready-made one from the agent catalog.
 
 Sign in with a subscription you already have (optional — API keys work too):
 
