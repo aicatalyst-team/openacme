@@ -13,9 +13,11 @@ import { statusCommand } from "./commands/status.js";
 import { logsCommand } from "./commands/logs.js";
 import { serveInternalCommand } from "./commands/__serve.js";
 import {
-  secretShowCommand,
-  secretRotateCommand,
-} from "./commands/secret.js";
+  membersListCommand,
+  membersRevokeCommand,
+  inviteCommand,
+  claimCommand,
+} from "./commands/members.js";
 import { chatCommand } from "./commands/chat.js";
 import { loginCommand } from "./commands/login.js";
 import { logoutCommand } from "./commands/logout.js";
@@ -143,22 +145,33 @@ program
   .option("-d, --data-dir <path>", "Data directory (default: ~/.openacme)")
   .action(serveInternalCommand);
 
-const secret = program
-  .command("secret")
-  .description("Manage the access secret used for non-loopback web access");
-
-secret
-  .command("show", { isDefault: true })
-  .description("Print the current secret")
+program
+  .command("claim")
+  .description("Print the first-run setup link to create the operator account")
   .option("-d, --data-dir <path>", "Data directory (default: ~/.openacme)")
-  .action(secretShowCommand);
+  .action(claimCommand);
 
-secret
-  .command("rotate")
-  .description("Generate a new secret (invalidates existing sessions)")
+program
+  .command("invite")
+  .description("Mint a one-time link to add another member (hand off out-of-band)")
   .option("-d, --data-dir <path>", "Data directory (default: ~/.openacme)")
-  .option("--no-service", "Operate against the no-service PID-file path")
-  .action(secretRotateCommand);
+  .action(inviteCommand);
+
+const members = program
+  .command("members")
+  .description("Manage human operators (flat-role admins)");
+
+members
+  .command("list", { isDefault: true })
+  .description("List members by email")
+  .option("-d, --data-dir <path>", "Data directory (default: ~/.openacme)")
+  .action(membersListCommand);
+
+members
+  .command("revoke <email>")
+  .description("Remove a member and invalidate their sessions")
+  .option("-d, --data-dir <path>", "Data directory (default: ~/.openacme)")
+  .action(membersRevokeCommand);
 
 program
   .command("setup")

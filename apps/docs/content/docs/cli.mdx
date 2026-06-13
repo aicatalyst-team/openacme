@@ -17,8 +17,8 @@ openacme status        # uptime, address, recent log lines
 openacme logs -f       # follow the log
 ```
 
-`openacme start --expose` binds to your network instead of localhost only and
-generates an access secret (see `openacme secret`).
+`openacme start --expose` binds to your network instead of localhost only.
+Sign-in is always required — see the `Members` group below.
 
 ## Chat in the terminal
 
@@ -58,7 +58,15 @@ openacme agents catalog        # list importable agent templates
 openacme agents import <id>    # import one
 openacme mcp list              # manage MCP server connections
 openacme memory show <agent>   # inspect an agent's memory
-openacme secret show|rotate    # access secret for network installs
+```
+
+## Members
+
+```sh
+openacme claim                 # first run: print the setup link to create your account
+openacme invite                # mint a one-time link to add a teammate (hand off out-of-band)
+openacme members list          # list operator accounts
+openacme members revoke <email># remove an account + invalidate its sessions
 ```
 
 Run any group without arguments for its full help text.

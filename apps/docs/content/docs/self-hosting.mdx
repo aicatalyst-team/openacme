@@ -61,6 +61,7 @@ By default OpenAcme listens on `127.0.0.1` only. The easiest way to reach it fro
 your phone or share it with a teammate is a tunnel — see
 [Remote access](/docs/remote-access), with no reverse proxy, certificates, or DNS
 to set up. If you already run a reverse proxy (nginx, Caddy) with a domain and
-TLS, you can instead point it at `http://localhost:3456`. Either way, set an
-access secret first (`openacme secret rotate`) — the server is then reachable
-beyond loopback and requires it.
+TLS, you can instead point it at `http://localhost:3456`. Either way, sign-in is
+always required: on first run open the setup link from the daemon log (or
+`openacme claim`) to create your account, then `openacme invite` to add anyone
+else.

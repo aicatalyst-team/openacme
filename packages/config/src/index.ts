@@ -74,13 +74,4 @@ export { loadGlobalMcpServers, saveGlobalMcpServers } from "./mcp-store.js";
 
 export { writeAtomic0600 } from "./atomic.js";
 
-export {
-  secretPath,
-  generateSecret,
-  readSecret,
-  writeSecret,
-  ensureSecret,
-  clearSecret,
-} from "./secret.js";
-
 export { readLastVersion, writeLastVersion } from "./version-marker.js";
