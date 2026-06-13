@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
-import type { SSEEvent } from "./harness.js";
+import { e2eToken, type SSEEvent } from "./harness.js";
 
-/** Thin HTTP client over a running e2e daemon. Sets the loopback Host header
- *  so the auth middleware's loopback bypass applies. */
-export function makeClient(baseUrl: string) {
+/** Thin HTTP client over a running e2e daemon. Auth is always on, so every
+ *  request carries the harness-seeded operator session as a bearer token. */
+export function makeClient(baseUrl: string, token: string = e2eToken()) {
   function req(p: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set("host", "127.0.0.1");
+    if (!headers.has("authorization")) headers.set("authorization", `Bearer ${token}`);
     return fetch(`${baseUrl}${p}`, { ...init, headers });
   }
 

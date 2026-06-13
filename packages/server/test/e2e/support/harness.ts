@@ -18,7 +18,16 @@ export interface E2EServer {
   baseUrl: string;
   dataDir: string;
   manager: AgentManager;
+  authToken: string;
   close: () => Promise<void>;
+}
+
+// Auth is always on now. The harness seeds one operator + session; the e2e
+// client and SSE reader default to this bearer so existing call sites need
+// no change. Per-file isolation keeps this from racing across servers.
+let e2eAuthToken = "";
+export function e2eToken(): string {
+  return e2eAuthToken;
 }
 
 export async function startE2EServer(
@@ -47,12 +56,19 @@ export async function startE2EServer(
     }
   );
 
+  const member = manager.authStore.createMember({
+    email: "e2e@example.com",
+    password: "e2e-password-123",
+  });
+  e2eAuthToken = manager.authStore.createSession(member.id).token;
+
   if (opts.dispatcher) await manager.dispatcher.start();
 
   return {
     baseUrl: `http://127.0.0.1:${port}`,
     dataDir,
     manager,
+    authToken: e2eAuthToken,
     close: async () => {
       if (opts.dispatcher) manager.dispatcher.stop();
       // Let fire-and-forget post-turn writes (usage ledger, title, extractor)
@@ -81,7 +97,11 @@ export interface SSEHandle {
 export async function openSSE(url: string): Promise<SSEHandle> {
   const controller = new AbortController();
   const res = await fetch(url, {
-    headers: { host: "127.0.0.1", accept: "text/event-stream" },
+    headers: {
+      host: "127.0.0.1",
+      accept: "text/event-stream",
+      authorization: `Bearer ${e2eAuthToken}`,
+    },
     signal: controller.signal,
   });
   if (!res.body) throw new Error(`SSE ${url} returned no body (${res.status})`);
