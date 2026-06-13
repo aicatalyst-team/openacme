@@ -78,9 +78,9 @@ export function RosterPanel() {
   const role = ROLES[active]!;
 
   return (
-    <div className="grid border border-paper-rule lg:grid-cols-12">
+    <div className="grid grid-cols-1 border border-paper-rule lg:grid-cols-12">
       {/* Role list */}
-      <div className="flex flex-col border-b border-paper-rule lg:col-span-5 lg:border-r lg:border-b-0">
+      <div className="flex min-w-0 flex-col border-b border-paper-rule lg:col-span-5 lg:border-r lg:border-b-0">
         {ROLES.map((r, i) => {
           const isActive = i === active;
           return (
@@ -125,7 +125,7 @@ export function RosterPanel() {
       </div>
 
       {/* Dossier — the agent's actual file */}
-      <div className="flex flex-col bg-code-surface lg:col-span-7">
+      <div className="flex min-w-0 flex-col bg-code-surface lg:col-span-7">
         <div className="flex items-center justify-between border-b border-paper-rule px-5 py-2.5">
           <span className="font-mono text-[11px] tracking-[0.1em] text-ink-faint">
             agents/{role.id}/AGENT.md
