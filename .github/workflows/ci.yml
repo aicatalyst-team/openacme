@@ -39,3 +39,12 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: E2E (HTTP API)
+        run: pnpm test:e2e
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E (web UI)
+        run: pnpm test:e2e:web

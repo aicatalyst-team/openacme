@@ -15,7 +15,7 @@ export interface AuthOptions {
 
 function isLoopbackHost(hostHeader: string | undefined): boolean {
   if (!hostHeader) return false;
-  // Strip the port: "localhost:3210" → "localhost", "[::1]:3210" → "[::1]".
+  // Strip the port: "localhost:3456" → "localhost", "[::1]:3456" → "[::1]".
   let host = hostHeader.trim();
   if (host.startsWith("[")) {
     const close = host.indexOf("]");

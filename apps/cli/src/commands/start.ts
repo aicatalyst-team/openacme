@@ -141,7 +141,7 @@ export async function startCommand(opts: StartOpts): Promise<void> {
     console.log("");
     console.log("  Reprint:  openacme secret");
     console.log("  Rotate:   openacme secret rotate");
-    console.log("  Tunnel:   ngrok http 3210   (paste the secret on first device load)");
+    console.log("  Tunnel:   ngrok http 3456   (paste the secret on first device load)");
   } else if (freshSecret) {
     console.log("");
     console.log("  Bound non-loopback — share this secret with devices:");

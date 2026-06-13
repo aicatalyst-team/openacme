@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+# Before pushing: run the end-to-end suite. The HTTP e2e boots a real daemon
+# with a stubbed model (no tokens, no network) and drives the full agent loop,
+# tasks + autonomous dispatch, cancellation, attachments, and memory over real
+# HTTP + SSE. `pnpm build` is turbo-cached, so it's a fast no-op when the graph
+# is unchanged.
+#
+# The browser (Playwright) e2e is intentionally NOT run here — it needs a
+# Chromium download and is heavier. CI runs it on every push / PR. Bypass this
+# hook with `git push --no-verify`.
+
+set -e
+pnpm build
+pnpm test:e2e

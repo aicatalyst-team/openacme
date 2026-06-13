@@ -51,7 +51,7 @@ const TERMINAL_LINES: TermLine[] = [
   { kind: "out", text: "✓ Signed in — Claude subscription", tone: "ok" },
   { kind: "out", text: "✓ Config saved — ~/.openacme", tone: "ok" },
   { kind: "cmd", text: "openacme start" },
-  { kind: "out", text: "✓ Daemon up — 127.0.0.1:3210", tone: "ok" },
+  { kind: "out", text: "✓ Daemon up — 127.0.0.1:3456", tone: "ok" },
   { kind: "out", text: "" },
   { kind: "cmd", text: "openacme chat" },
   {

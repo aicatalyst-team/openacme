@@ -333,7 +333,7 @@ export type TeamDefinition = z.infer<typeof TeamDefinitionSchema>;
  * Server configuration.
  */
 export const ServerConfigSchema = z.object({
-  port: z.number().default(3210),
+  port: z.number().default(3456),
   host: z.string().default("127.0.0.1"),
 });
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;

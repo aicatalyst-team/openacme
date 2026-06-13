@@ -1,6 +1,26 @@
 # Contributing
 
-Thanks for working on OpenAcme. This guide currently focuses on the **release process** — sections on local development setup and PR conventions can be added as the project grows.
+Thanks for working on OpenAcme. This guide covers **testing** and the **release process**; sections on local development setup and PR conventions can be added as the project grows.
+
+## Testing
+
+Three layers, all run in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)):
+
+```sh
+pnpm test          # unit + route tests (vitest, per package) — fast, mocked
+pnpm test:e2e      # HTTP end-to-end: real daemon over HTTP + SSE
+pnpm test:e2e:web  # browser end-to-end: real Chromium via Playwright
+```
+
+`pnpm test` is also run by the **pre-commit** hook; `pnpm test:e2e` by **pre-push** (see [.githooks](.githooks)). Bypass either with `--no-verify`.
+
+The e2e layers boot the **real** daemon (`createApp` + node-server) and drive it over HTTP/SSE (`packages/server/test/e2e/`) and Playwright (`apps/web/e2e/`). No tokens, no network: the only stub is the LLM, injected via a `resolveModel` seam that defaults to the real `getModel` — so **no mock ships in any `@openacme/*` package**. Each run uses a throwaway data dir with its own SQLite DB and real on-disk files.
+
+The stub's behaviour is scripted by `[[mock:...]]` directives in the message — see the header of [stub-model.mjs](packages/server/test/e2e/support/stub-model.mjs). To add a test, drop a `*.e2e.ts` (HTTP) or `*.spec.ts` (browser) into the dirs above.
+
+To add: drop a `*.e2e.ts` (HTTP) or `*.spec.ts` (browser) and script behaviour with `[[mock:…]]` directives.
+
+Everything below the model is real: each run gets a throwaway data dir (`mkdtemp`), its own SQLite DB, on-disk agent folders / tasks / skills / memory files, real attachment bytes, spawned tool-host workers, and (for MCP) a real client↔server round-trip. Only the LLM's token generation is the stub.
 
 ## Releasing
 

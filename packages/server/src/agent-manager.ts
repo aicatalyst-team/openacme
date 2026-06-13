@@ -1,6 +1,7 @@
 import {
   Agent,
   type AgentConfig,
+  type ModelResolver,
   type UsageReport,
 } from "@openacme/agent-core";
 import { resolveAuthMode } from "@openacme/llm-provider";
@@ -201,9 +202,18 @@ export class AgentManager {
    *  a live worker this process. */
   private stdioMcpRefreshed = new Set<string>();
   readonly skillRegistry: SkillRegistry;
+  /** Optional model-resolution override, threaded into every Agent. Unset
+   *  in production (Agent falls back to the real `getModel`); e2e supplies
+   *  a stub. Named distinctly from the `resolveModel(def)` method below,
+   *  which resolves an agent def to a ModelConfig (a different concept). */
+  private readonly modelResolver: ModelResolver | undefined;
 
-  constructor(config: Config) {
+  constructor(
+    config: Config,
+    opts?: { resolveModel?: ModelResolver; tickIntervalMs?: number }
+  ) {
     this.config = config;
+    this.modelResolver = opts?.resolveModel;
     this.db = createDatabase(config);
     this.attachmentsRoot = path.join(config.dataDir, "attachments");
     // agentsDir is computed below too; resolve it early so the SessionStore
@@ -322,6 +332,7 @@ export class AgentManager {
       inboxStore: this.inboxStore,
       agentManager: this,
       broadcaster: this.broadcaster,
+      tickIntervalMs: opts?.tickIntervalMs,
     });
     // Event fan-out has two branches now:
     //   1. Inbox delivery — each event is delivered to every *relevant*
@@ -1892,6 +1903,7 @@ export class AgentManager {
       inboxStore: this.inboxStore,
       broadcaster: this.broadcaster,
       onUsage: (report) => this.recordUsage(report),
+      resolveModel: this.modelResolver,
     });
   }
 

@@ -17,6 +17,11 @@ import {
   supportsToolResultMedia,
 } from "@openacme/llm-provider";
 import { createLogger } from "@openacme/config/logger";
+
+/** Resolves a ModelConfig to a live AI SDK model. Matches `getModel`'s
+ *  signature; injectable through the Agent (and AgentManager / createApp)
+ *  so e2e can supply a stub without going through a real provider. */
+export type ModelResolver = typeof getModel;
 import { toolCallContext, type ToolRegistry } from "@openacme/tools";
 import {
   DEFAULT_MEMORY_CHAR_LIMIT,
@@ -285,6 +290,11 @@ export class Agent {
   readonly inboxStore: InboxStore;
   readonly broadcaster: AutonomousBroadcaster | null;
   private readonly onUsage: ((report: UsageReport) => void) | null;
+  /** Resolves a ModelConfig to a live model. Defaults to the real provider
+   *  factory; injectable so callers can supply a different implementation.
+   *  Package-internal (read by the subagent runner) — not part of the
+   *  public API. */
+  readonly resolveModel: ModelResolver;
   readonly compressor = new Compressor();
   private cachedSystemPrompts = new Map<string, string>();
   // Cursor: id of the last assistant covered by an extractor run.
@@ -323,6 +333,9 @@ export class Agent {
        *  token counts; the recorder computes cost + persists. Must never
        *  throw into the turn — calls are wrapped. */
       onUsage?: (report: UsageReport) => void;
+      /** Override the model-resolution factory. Defaults to the real
+       *  `getModel`; supplied by tests/e2e to inject a stub model. */
+      resolveModel?: ModelResolver;
     }
   ) {
     this.config = config;
@@ -335,6 +348,7 @@ export class Agent {
     this.inboxStore = deps.inboxStore;
     this.broadcaster = deps.broadcaster ?? null;
     this.onUsage = deps.onUsage ?? null;
+    this.resolveModel = deps.resolveModel ?? getModel;
   }
 
   /**
@@ -409,7 +423,7 @@ export class Agent {
     const startedAt = Date.now();
 
     return streamText({
-      model: getModel(usageModel),
+      model: this.resolveModel(usageModel),
       system,
       messages,
       tools: tools as Parameters<typeof streamText>[0]["tools"],

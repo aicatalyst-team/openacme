@@ -19,7 +19,7 @@ import {
 } from "ai";
 import { randomUUID } from "node:crypto";
 import { z, type ZodTypeAny } from "zod";
-import { getModel, resolveSubagentModel } from "@openacme/llm-provider";
+import { resolveSubagentModel } from "@openacme/llm-provider";
 import type { UsageKind } from "@openacme/db";
 import type { Agent } from "./agent.js";
 import type { TokenUsage } from "./types.js";
@@ -232,7 +232,7 @@ async function runStructured<S extends ZodTypeAny>(
   try {
     const subagentModel = resolveSubagentModel(args.parent.config.model);
     const result = await generateObject({
-      model: getModel(subagentModel),
+      model: args.parent.resolveModel(subagentModel),
       system: args.system,
       schema: args.schema,
       messages: [{ role: "user", content: args.user }],
