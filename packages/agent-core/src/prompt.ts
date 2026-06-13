@@ -192,6 +192,31 @@ const PING_USER_GUIDANCE =
   "After calling, end the turn — the user's reply lands as a regular message " +
   "that wakes you on its own.";
 
+/**
+ * Closes the self-improvement loop when skill authoring is enabled
+ * (skill_create merged in only under `skills.autoGenerate`): lessons
+ * accumulate in memory, a recurring task reviews them, proven ones
+ * graduate to skills.
+ */
+const SELF_IMPROVEMENT_GUIDANCE =
+  "You can author and revise your own skills with `skill_create` / `skill_edit` " +
+  "— this is how a lesson becomes a permanent capability instead of a memory " +
+  "you may or may not recall.\n" +
+  "The improvement loop: (1) during work, save process lessons to memory under " +
+  "`lessons/<topic>.md`; (2) when the same lesson has proven out across multiple " +
+  "activations, promote it — `skill_create` a procedure capturing when it " +
+  "applies, the steps, and the pitfalls it prevents, then trim the memory entry " +
+  "to a pointer at the skill; (3) when a skill's procedure turns out wrong or " +
+  "incomplete in practice, `skill_edit` it while the failure is fresh.\n" +
+  "Promote sparingly: a skill is a procedure you'd follow every time the " +
+  "situation recurs, not a diary entry. One confirmed repetition is a lesson; " +
+  "promotion needs a stable, reusable procedure. Skills are shared workforce-" +
+  "wide — write them so a coworker with a different role could follow them, " +
+  "and never overwrite the intent of a skill the user authored.\n" +
+  "To make this recurring rather than incidental, you may keep one self-" +
+  "assigned recurring task (e.g. weekly) to review `lessons/`, consolidate " +
+  "duplicates, drop stale entries, and promote what has earned it.";
+
 const SLEEP_GUIDANCE =
   "`sleep(duration)` sets when the scheduler next probes this session if " +
   "nothing else moves the world. Default cadence is your agent's " +
@@ -414,6 +439,13 @@ export function buildSystemPrompt(options: {
   }
   if (options.toolNames.includes("sleep")) {
     parts.push(`\n## Pacing your own wakeups\n${SLEEP_GUIDANCE}`);
+  }
+
+  // Self-improvement loop — gated on `skill_create`, which AgentManager
+  // merges in only when `skills.autoGenerate` is on, so prompt guidance
+  // and callable surface can't drift apart.
+  if (options.toolNames.includes("skill_create")) {
+    parts.push(`\n## Improving yourself\n${SELF_IMPROVEMENT_GUIDANCE}`);
   }
 
   // Skills index (Level 0 — names + descriptions). Bodies aren't loaded
