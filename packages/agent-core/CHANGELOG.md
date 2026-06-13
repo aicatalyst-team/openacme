@@ -1,5 +1,17 @@
 # @openacme/agent-core
 
+## 0.9.0
+
+### Patch Changes
+
+- Updated dependencies [[`b0d78ae`](https://github.com/sandydasari/openacme/commit/b0d78aed13b9286413fe4d679461cc4be5491e15)]:
+  - @openacme/db@0.9.0
+  - @openacme/tools@0.9.0
+  - @openacme/config@0.9.0
+  - @openacme/llm-provider@0.9.0
+  - @openacme/memory@0.9.0
+  - @openacme/tasks@0.9.0
+
 ## 0.8.0
 
 ### Patch Changes
