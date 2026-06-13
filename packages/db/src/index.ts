@@ -61,6 +61,12 @@ export {
   type UsageCostSource,
 } from "./usage-kinds.js";
 export {
+  createAuthStore,
+  type AuthStore,
+  type MemberPublic,
+  type MemberRow,
+} from "./stores/auth-store.js";
+export {
   sessions,
   messages,
   userProfiles,
@@ -69,6 +75,9 @@ export {
   agentInbox,
   pushSubscriptions,
   usageEvents,
+  members,
+  authSessions,
+  enrollTokens,
   type NewSession,
   type MessageRow,
   type NewMessageRow,

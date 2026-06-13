@@ -282,6 +282,64 @@ export const usageEvents = sqliteTable(
   ]
 );
 
+/**
+ * Human operators. The deployment is single-org / flat-role: every member
+ * is a full admin, distinguished only so the system can route to them.
+ * `email` is the identifier (self-asserted at enrollment — no SMTP, so no
+ * verification) and doubles as the future notification address. The row id
+ * is a surrogate key so an email change is a one-field edit, not a rewrite
+ * of every future owner reference.
+ *
+ * `password_hash` is scrypt(password, salt) — a slow KDF, NOT the SHA-256
+ * used for the high-entropy session/enroll tokens. Treat the row as a
+ * credential: never surface `password_hash` / `password_salt` on the wire.
+ */
+export const members = sqliteTable("members", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  passwordSalt: text("password_salt").notNull(),
+  createdAt: integer("created_at")
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Login sessions. The cookie/bearer carries a high-entropy token; only its
+ * SHA-256 lives here (a stolen DB can't mint cookies). Member delete
+ * cascades, so revoking a member instantly invalidates their sessions —
+ * the reason this is stateful rather than a self-contained signed JWT.
+ */
+export const authSessions = sqliteTable(
+  "auth_sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at")
+      .notNull()
+      .default(sql`(unixepoch())`),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (t) => [index("idx_auth_sessions_member").on(t.memberId)]
+);
+
+/**
+ * One-time credential-creation tokens — the single primitive behind both
+ * first-run claim (token printed to the boot log) and invites (link the
+ * founder hands off out-of-band). Single-use (`used_at` set on consume)
+ * with a TTL. Only the SHA-256 is stored.
+ */
+export const enrollTokens = sqliteTable("enroll_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  createdAt: integer("created_at")
+    .notNull()
+    .default(sql`(unixepoch())`),
+  expiresAt: integer("expires_at").notNull(),
+  usedAt: integer("used_at"),
+});
+
 // Schema-derived types. `$inferSelect` is what comes out of a query;
 // `$inferInsert` is what callers pass in (defaults / nullables become
 // optional, the rest stay required). The `parts` column is JSON-stringified
@@ -302,3 +360,7 @@ export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type NewPushSubscriptionRow = typeof pushSubscriptions.$inferInsert;
 export type UsageEventRow = typeof usageEvents.$inferSelect;
 export type NewUsageEventRow = typeof usageEvents.$inferInsert;
+export type MemberRow = typeof members.$inferSelect;
+export type NewMemberRow = typeof members.$inferInsert;
+export type AuthSessionRow = typeof authSessions.$inferSelect;
+export type EnrollTokenRow = typeof enrollTokens.$inferSelect;
