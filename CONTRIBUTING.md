@@ -14,25 +14,9 @@ pnpm test:e2e:web  # browser end-to-end: real Chromium via Playwright
 
 `pnpm test` is also run by the **pre-commit** hook; `pnpm test:e2e` by **pre-push** (see [.githooks](.githooks)). Bypass either with `--no-verify`.
 
-### How e2e works (no tokens, no network)
+The e2e layers boot the **real** daemon (`createApp` + node-server) and drive it over HTTP/SSE (`packages/server/test/e2e/`) and Playwright (`apps/web/e2e/`). No tokens, no network: the only stub is the LLM, injected via a `resolveModel` seam that defaults to the real `getModel` — so **no mock ships in any `@openacme/*` package**. Each run uses a throwaway data dir with its own SQLite DB and real on-disk files.
 
-E2e runs the **real** server (`createApp` + node-server) but injects a deterministic stub model through the `resolveModel` seam — `createApp(config, { resolveModel })`, defaulting to the real `getModel`. The stub (Vercel SDK's `MockLanguageModelV3`) lives entirely in test code; **no mock ships in any `@openacme/*` package**. Everything else is real: a throwaway `mkdtemp` data dir, its own SQLite DB, on-disk agent/task/skill/memory files, real attachment bytes, spawned tool-host workers, and (for MCP) a real client↔server round-trip.
-
-The stub is scripted by the latest user message:
-
-| Directive | Behaviour |
-|---|---|
-| `[[mock:text:hi]]` | streams exactly `hi` |
-| `[[mock:tool:list_files:{"path":"."}]]` | a real tool call, then closes on the follow-up turn |
-| `[[mock:chain]]` | two sequential tool calls, then text (multi-step loop) |
-| `[[mock:error:boom]]` | a stream error |
-| `[[mock:slow]]` | a long, delayed stream (for cancellation) |
-| anything else | a canned echo (includes any recalled memory) |
-
-It also answers `generateObject` calls (titles, and the memory selector's `{ selected_memories }`), so recall is deterministic.
-
-- **HTTP e2e** (`packages/server/test/e2e/*.e2e.ts`): `startE2EServer()` boots a daemon on a random port; drive it with `makeClient()` + the `openSSE` reader. Covers chat/tool/error, the multi-step loop, MCP, skills install + `skill_view`, task tools + dispatch, teams routing, cancel, attachments, memory write + recall, usage, and catalog import. Runs under `vitest.e2e.config.ts` (the default `pnpm test` ignores `*.e2e.ts`).
-- **Browser e2e** (`apps/web/e2e/*.spec.ts`): Playwright boots a daemon via [boot-web.mjs](packages/server/test/e2e/support/boot-web.mjs) serving the built bundle (`pnpm build` first); all specs share one daemon (`workers: 1`). Rule: one real journey per route + the SSE multi-tab invariant. Behavioural depth lives in the HTTP layer; the browser layer stays thin.
+The stub's behaviour is scripted by `[[mock:...]]` directives in the message — see the header of [stub-model.mjs](packages/server/test/e2e/support/stub-model.mjs). To add a test, drop a `*.e2e.ts` (HTTP) or `*.spec.ts` (browser) into the dirs above.
 
 To add: drop a `*.e2e.ts` (HTTP) or `*.spec.ts` (browser) and script behaviour with `[[mock:…]]` directives.
 

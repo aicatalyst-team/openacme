@@ -5,7 +5,7 @@
 // Launched by apps/web/playwright.config.ts as its `webServer`. Run from the
 // built server dist, so `pnpm build` must have produced packages/server/dist
 // and apps/web/out first.
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { serve } from "@hono/node-server";
@@ -17,6 +17,9 @@ const PORT = Number(process.env["OPENACME_E2E_PORT"] || 3998);
 
 const dataDir = mkdtempSync(path.join(tmpdir(), "openacme-web-e2e-"));
 process.env["OPENACME_DATA_DIR"] = dataDir;
+// Record the dir so Playwright's globalTeardown removes it once the run ends —
+// the webServer is SIGKILLed on teardown and can't clean up after itself.
+writeFileSync(path.join(tmpdir(), "openacme-web-e2e.current"), dataDir);
 process.env["OPENACME_TELEMETRY"] = "";
 // Makes /api/keys report a configured provider so the chat page skips the
 // first-run setup wizard. Never actually used — resolveModel returns the stub
