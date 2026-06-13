@@ -25,6 +25,7 @@ afterAll(async () => {
 function req(p: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("host", "127.0.0.1");
+  if (!headers.has("authorization")) headers.set("authorization", `Bearer ${srv.authToken}`);
   return fetch(`${srv.baseUrl}${p}`, { ...init, headers });
 }
 

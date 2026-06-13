@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import * as crypto from "node:crypto";
 import { createLogger } from "@openacme/config/logger";
 import { readRawConfig, writeRawConfig } from "@openacme/config";
 import {
@@ -27,7 +26,7 @@ import {
 } from "@openacme/agent-core";
 import { AgentManager } from "./agent-manager.js";
 import { authMiddleware } from "./middleware/auth.js";
-import { registerAuthRoutes } from "./routes/auth.js";
+import { registerAuthRoutes, registerMemberRoutes } from "./routes/auth.js";
 import { registerUploadsRoutes, type UploadsContext } from "./routes/uploads.js";
 import { registerFilesRoutes } from "./routes/files.js";
 import { registerFsRoutes } from "./routes/fs.js";
@@ -47,7 +46,6 @@ import {
   ModelConfigSchema,
   loadGlobalMcpServers,
   saveGlobalMcpServers,
-  readSecret,
   lookupModelMetadata,
   type Config,
   type AgentDefinition,
@@ -129,20 +127,29 @@ export async function createApp(
   // Middleware
   app.use("/*", cors());
 
-  // Auth: load the secret once at boot so we can timing-safe-compare hashes
-  // on each request. Loopback Host always bypasses; the secret only matters
-  // when the daemon is bound non-loopback (or behind a tunnel).
-  const rawSecret = readSecret(config.dataDir);
-  const secretSha256 = rawSecret
-    ? crypto.createHash("sha256").update(rawSecret).digest("hex")
-    : null;
-
-  // Auth routes must be reachable without a cookie — mount BEFORE the
-  // gate. The middleware also whitelists /api/auth/* and /login, but
-  // mounting first is the belt to that suspenders.
-  registerAuthRoutes(app, { secretSha256 });
+  // Auth: per-member email+password with stateful sessions (see
+  // @openacme/db AuthStore). There is no loopback bypass — every request
+  // needs a valid session. Login + enrollment routes mount BEFORE the gate
+  // (they must be reachable without a session); member management mounts
+  // after it.
+  registerAuthRoutes(app, { store: manager.authStore });
   registerSetupRoutes(app, { dataDir: config.dataDir, manager });
-  app.use("/*", authMiddleware({ secretSha256 }));
+  app.use("/*", authMiddleware({ store: manager.authStore }));
+  registerMemberRoutes(app, { store: manager.authStore });
+
+  // Fresh install / post-upgrade: no members yet → mint a one-time claim
+  // token and print the setup link to the log. Reading the log is the
+  // proof-of-deployer that gates first-run (closes the public-URL claim
+  // window). A new token each boot while still memberless.
+  if (manager.authStore.countMembers() === 0) {
+    const { token } = manager.authStore.createEnrollToken();
+    const { host, port } = config.server;
+    log.warn(
+      { setupPath: `/setup?token=${token}` },
+      `No operator account yet. Claim this instance at ` +
+        `http://${host}:${port}/setup?token=${token}`
+    );
+  }
 
   // Attachment upload + serve routes. The orphan map returned here is
   // shared with /api/chat below so we can resolve `attachmentId` parts

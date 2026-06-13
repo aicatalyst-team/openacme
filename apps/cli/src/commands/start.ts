@@ -3,11 +3,10 @@ import * as fs from "node:fs";
 import {
   loadConfig,
   resolveDataDir,
-  ensureSecret,
-  readSecret,
   readRawConfig,
   writeRawConfig,
 } from "@openacme/config";
+import { createDatabase, createAuthStore } from "@openacme/db";
 import {
   getPlatformLifecycle,
   logPath,
@@ -72,14 +71,10 @@ export async function startCommand(opts: StartOpts): Promise<void> {
   // the Acme platform agent on first boot. If provider auth is missing
   // the daemon still boots; chat fails with a self-explanatory auth error
   // which is the right surface for that case.
-
-  // Non-loopback binding requires a secret for the auth middleware.
-  let freshSecret: string | null = null;
-  if (!isLoopback(host)) {
-    const before = readSecret(dataDir);
-    const secret = ensureSecret(dataDir);
-    if (!before) freshSecret = secret;
-  }
+  //
+  // Auth is always on (per-member email+password), loopback or not — no
+  // secret to generate here anymore. First access goes through the web
+  // claim flow; the daemon prints a setup link to its log on first boot.
 
   const lp = logPath(dataDir);
   if (!fs.existsSync(lp)) writeAtomic0600(lp, "");
@@ -132,24 +127,33 @@ export async function startCommand(opts: StartOpts): Promise<void> {
   const pidLine = finalStatus.pid ? ` (pid ${finalStatus.pid})` : "";
   console.log(`✓ daemon listening on ${url}${pidLine}`);
 
-  if (opts.expose) {
-    const secret = readSecret(dataDir) ?? "";
-    console.log("");
-    console.log("  Share this secret with devices that need access:");
-    console.log("");
-    console.log(`      ${secret}`);
-    console.log("");
-    console.log("  Reprint:  openacme secret");
-    console.log("  Rotate:   openacme secret rotate");
-    console.log("  Tunnel:   ngrok http 3456   (paste the secret on first device load)");
-  } else if (freshSecret) {
-    console.log("");
-    console.log("  Bound non-loopback — share this secret with devices:");
-    console.log("");
-    console.log(`      ${freshSecret}`);
-    console.log("");
-    console.log("  Reprint:  openacme secret");
-    console.log("  Rotate:   openacme secret rotate");
+  // First run: there's no operator account yet. Surface the setup link and
+  // open the browser straight to it (token prefilled) so creating the
+  // account needs no extra CLI step beyond `start`. `openacme claim` reprints
+  // this link; it's only needed on headless boxes where no browser opens.
+  let openUrl = url;
+  try {
+    const db = createDatabase(config);
+    const store = createAuthStore(db);
+    if (store.countMembers() === 0) {
+      const { token } = store.createEnrollToken();
+      openUrl = `${url}/setup?token=${token}`;
+      console.log("");
+      console.log("  First run — open this to create your account:");
+      console.log("");
+      console.log(`      ${openUrl}`);
+      console.log("");
+      console.log("  Add someone later:  openacme invite");
+    } else if (opts.expose) {
+      console.log("");
+      console.log("  Add someone:  openacme invite   (one-time link, hand off out-of-band)");
+    }
+    db.close();
+  } catch {
+    if (opts.expose) {
+      console.log("");
+      console.log("  First run:  openacme claim   (prints the setup link)");
+    }
   }
 
   console.log("");
@@ -163,6 +167,6 @@ export async function startCommand(opts: StartOpts): Promise<void> {
   }
 
   if (process.stdout.isTTY && !opts.noBrowser) {
-    setTimeout(() => openBrowser(url), 500);
+    setTimeout(() => openBrowser(openUrl), 500);
   }
 }

@@ -9,23 +9,38 @@ you **don't** need a reverse proxy, TLS certificates, DNS records, or open
 ports. A tunnel handles all of that: your machine makes an outbound connection
 and hands back a public HTTPS URL.
 
-## Set an access secret
+## Create your account
 
-Once OpenAcme is reachable beyond loopback it requires a secret, so a public URL
-is never wide open. Create one:
+OpenAcme always requires a sign-in — local or remote, a public URL is never wide
+open. On first run the daemon prints a one-time setup link to its log:
 
 ```sh
-openacme secret rotate
+openacme logs        # look for "Claim this instance at …/setup?token=…"
+openacme claim       # or reprint the setup link on demand
 ```
 
-It prints the secret and restarts the daemon. You enter it once per device — any
-of the tunnels below then drops you at this screen:
+Open that link and set an email + password. The token proves you can read the
+server's log — i.e. that you're the person who deployed it — so a stranger who
+opens your tunnel URL first can't claim the instance. After that, any of the
+tunnels below drops every device at the sign-in screen:
 
 <DocShot
   name="login"
-  alt="The OpenAcme login screen prompting for the access secret"
-  caption="What anyone opening your tunnel URL sees first — the access-secret prompt."
+  alt="The OpenAcme sign-in screen prompting for email and password"
+  caption="What anyone opening your tunnel URL sees first — the sign-in prompt."
 />
+
+To let a teammate in, mint them a one-time invite link and hand it over however
+you like (no email is sent):
+
+```sh
+openacme invite      # prints a one-time …/enroll?token=… link
+```
+
+They open it, pick their own email + password, and they're in. Everyone has the
+same full access — accounts exist so each person has their own login, not to
+grant different permissions. Remove someone with `openacme members revoke
+<email>`, which also invalidates their active sessions.
 
 ## Cloudflare Tunnel
 
@@ -42,7 +57,7 @@ cloudflared tunnel --url http://localhost:3456
 ```
 
 It prints a `https://<random>.trycloudflare.com` URL — open it on any device and
-enter your secret. That URL is ephemeral. For a permanent URL on your own
+sign in. That URL is ephemeral. For a permanent URL on your own
 domain, create a *named* tunnel and route DNS to `http://localhost:3456`
 ([guide](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)).
 
@@ -55,9 +70,9 @@ Install [ngrok](https://ngrok.com/download), then after a free signup and
 ngrok http 3456
 ```
 
-It prints a public `https://<id>.ngrok-free.app` URL. Open it and enter your
-secret. Free URLs are ephemeral and show a one-time interstitial page; a paid
-plan gives a fixed subdomain.
+It prints a public `https://<id>.ngrok-free.app` URL. Open it and sign in. Free
+URLs are ephemeral and show a one-time interstitial page; a paid plan gives a
+fixed subdomain.
 
 ## Tailscale (private, no public URL)
 
@@ -71,7 +86,7 @@ public URL.
 ## Any other tunnel works
 
 The pattern is always the same — point the tunnel at `http://localhost:3456` and
-the access secret protects whatever public URL it hands back.
+your account login protects whatever public URL it hands back.
 [localtunnel](https://github.com/localtunnel/localtunnel),
 [`bore`](https://github.com/ekzhang/bore), an SSH reverse tunnel, or your own
 reverse proxy all work the same way.
@@ -80,4 +95,4 @@ reverse proxy all work the same way.
 
 The tunnel forwards straight to `:3456` and terminates HTTPS at its edge — so
 you skip nginx/Caddy, certificate renewal, DNS setup, and firewall/port
-forwarding entirely. The access secret is what keeps the public URL protected.
+forwarding entirely. Your account sign-in is what keeps the public URL protected.

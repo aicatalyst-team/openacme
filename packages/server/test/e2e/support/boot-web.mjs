@@ -37,11 +37,45 @@ const config = ConfigSchema.parse({
 
 const { app, manager } = await createApp(config, { resolveModel: () => createStubModel() });
 
+// Auth is always on. Seed one operator + session, and write a Playwright
+// storageState (localStorage bearer) so the browser specs start authenticated.
+// Written before serve() so it exists before the health check passes.
+const member = manager.authStore.createMember({
+  email: "e2e@example.com",
+  password: "e2e-password-123",
+});
+const authToken = manager.authStore.createSession(member.id).token;
+// Session COOKIE (not a localStorage bearer): the browser sends it natively
+// on same-origin requests, so it doesn't depend on the app's fetch wrapper
+// being active before the first auth check.
+writeFileSync(
+  path.join(tmpdir(), "openacme-web-e2e.storage.json"),
+  JSON.stringify({
+    cookies: [
+      {
+        name: "openacme_session",
+        value: authToken,
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: true,
+        secure: false,
+        sameSite: "Lax",
+        expires: -1,
+      },
+    ],
+    origins: [],
+  })
+);
+
 serve({ fetch: app.fetch, port: PORT, hostname: "127.0.0.1" }, async () => {
   // Seed one agent so the chat UI has someone to talk to.
   const res = await fetch(`http://127.0.0.1:${PORT}/api/agents`, {
     method: "POST",
-    headers: { "content-type": "application/json", host: "127.0.0.1" },
+    headers: {
+      "content-type": "application/json",
+      host: "127.0.0.1",
+      authorization: `Bearer ${authToken}`,
+    },
     body: JSON.stringify({ id: "helper", name: "Helper" }),
   });
   if (res.status !== 201) {

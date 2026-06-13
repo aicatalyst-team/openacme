@@ -35,6 +35,8 @@ import {
   createInboxStore,
   createPushStore,
   createUsageStore,
+  createAuthStore,
+  type AuthStore,
   type SessionStore,
   type MessageStore,
   type CommentStore,
@@ -159,6 +161,7 @@ export class AgentManager {
   readonly inboxStore: InboxStore;
   readonly pushStore: PushStore;
   readonly usageStore: UsageStore;
+  readonly authStore: AuthStore;
   readonly pushDispatcher: PushDispatcher;
   readonly vapid: VapidKeys;
   readonly attachmentsRoot: string;
@@ -231,6 +234,7 @@ export class AgentManager {
     this.inboxStore = createInboxStore(this.db);
     this.pushStore = createPushStore(this.db);
     this.usageStore = createUsageStore(this.db);
+    this.authStore = createAuthStore(this.db);
 
     // VAPID keys persist under `<dataDir>/push-vapid.json`, generated on
     // first boot. The dispatcher fans out to every subscribed device on

@@ -17,6 +17,7 @@ import type { Hono } from "hono";
 let dataDir: string;
 let app: Hono;
 let manager: AgentManager;
+let authToken: string;
 
 beforeEach(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), "openacme-routes-"));
@@ -25,6 +26,13 @@ beforeEach(async () => {
     model: { provider: "anthropic", model: "claude-sonnet-4-6" },
   });
   ({ app, manager } = await createApp(config));
+  // Auth is always on now — seed an operator and a session so the route
+  // tests authenticate via a bearer token.
+  const member = manager.authStore.createMember({
+    email: "test@example.com",
+    password: "test-password-123",
+  });
+  authToken = manager.authStore.createSession(member.id).token;
 });
 
 afterEach(async () => {
@@ -32,11 +40,12 @@ afterEach(async () => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-// The auth middleware bypasses loopback Host *headers*, and synthetic
-// app.request Requests don't carry one — set it explicitly.
+// Attach the seeded session as a bearer token (synthetic app.request
+// Requests carry no cookie). Host header is irrelevant to auth now.
 function req(p: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("host", "127.0.0.1");
+  if (!headers.has("authorization")) headers.set("authorization", `Bearer ${authToken}`);
   return app.request(`http://127.0.0.1${p}`, { ...init, headers });
 }
 
