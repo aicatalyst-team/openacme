@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import Database from "better-sqlite3";
 import { z } from "zod";
 import {
   applySchema,
+  WasmDatabase,
   createSessionStore,
   createMessageStore,
   createInboxStore,
@@ -35,7 +35,7 @@ const stubToolRegistry = {
 } as unknown as ToolRegistry;
 
 function freshDb() {
-  const db = new Database(":memory:");
+  const db = new WasmDatabase(":memory:");
   db.pragma("foreign_keys = ON");
   applySchema(db);
   return db;

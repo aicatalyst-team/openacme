@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import Database from "better-sqlite3";
+import { WasmDatabase } from "../src/wasm/adapter.js";
 import { applySchema } from "../src/connection.js";
 import { createSessionStore } from "../src/stores/session-store.js";
 import { createMessageStore } from "../src/stores/message-store.js";
 
 function freshDb() {
-  const db = new Database(":memory:");
+  const db = new WasmDatabase(":memory:");
   db.pragma("foreign_keys = ON");
   applySchema(db);
   // sessions.agent_id is now a plain text label (agents live as YAML files,
@@ -14,7 +14,7 @@ function freshDb() {
 }
 
 describe("SessionStore — fork chain", () => {
-  let db: Database.Database;
+  let db: WasmDatabase;
   let sessions: ReturnType<typeof createSessionStore>;
 
   beforeEach(() => {
@@ -122,7 +122,7 @@ describe("SessionStore — fork chain", () => {
 });
 
 describe("MessageStore — appendMany and ordering", () => {
-  let db: Database.Database;
+  let db: WasmDatabase;
   let sessions: ReturnType<typeof createSessionStore>;
   let messages: ReturnType<typeof createMessageStore>;
 
@@ -238,7 +238,7 @@ describe("MessageStore — appendMany and ordering", () => {
 });
 
 describe("EventStore — unresolvedPingsBySession (inbox resolution rule)", () => {
-  let db: Database.Database;
+  let db: WasmDatabase;
   let sessions: ReturnType<typeof createSessionStore>;
   let messages: ReturnType<typeof createMessageStore>;
 

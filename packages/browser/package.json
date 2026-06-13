@@ -36,8 +36,10 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "camoufox-js": "0.9.3",
     "playwright-core": "^1.50.0"
+  },
+  "optionalDependencies": {
+    "camoufox-js": "0.9.3"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",

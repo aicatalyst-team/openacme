@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { WasmDatabase } from "../wasm/adapter.js";
+import { drizzle } from "../wasm/drizzle.js";
 import { and, asc, count, eq, inArray } from "drizzle-orm";
 import { agentInbox, type AgentInboxRow } from "../schema.js";
 
@@ -70,7 +70,7 @@ function parseRow(row: AgentInboxRow): InboxRow {
  * is the caller's responsibility — typically at AgentManager's
  * event-emit fan-out site.
  */
-export function createInboxStore(db: Database.Database) {
+export function createInboxStore(db: WasmDatabase) {
   const orm = drizzle(db);
 
   return {

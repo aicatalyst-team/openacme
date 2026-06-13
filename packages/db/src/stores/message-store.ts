@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { WasmDatabase } from "../wasm/adapter.js";
+import { drizzle } from "../wasm/drizzle.js";
 import { asc, eq, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { messages, type NewMessageRow } from "../schema.js";
@@ -37,7 +37,7 @@ export interface SearchResult {
  * inside an assistant UIMessage's `parts` as `tool-${name}` parts —
  * structural pairing, no orphan-row problem.
  */
-export function createMessageStore(db: Database.Database) {
+export function createMessageStore(db: WasmDatabase) {
   const orm = drizzle(db);
 
   const ftsSearchStmt = db.prepare(

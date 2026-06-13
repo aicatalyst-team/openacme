@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { WasmDatabase } from "../wasm/adapter.js";
+import { drizzle } from "../wasm/drizzle.js";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   randomBytes,
@@ -61,7 +61,7 @@ function sha256Hex(value: string): string {
  * tokens. Members are flat-role admins distinguished by email; the single
  * shared-secret model this replaces is gone (see schema comments).
  */
-export function createAuthStore(db: Database.Database) {
+export function createAuthStore(db: WasmDatabase) {
   const orm = drizzle(db);
 
   return {

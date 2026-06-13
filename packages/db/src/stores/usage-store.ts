@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { WasmDatabase } from "../wasm/adapter.js";
+import { drizzle } from "../wasm/drizzle.js";
 import { randomUUID } from "node:crypto";
 import { usageEvents, type UsageEventRow } from "../schema.js";
 import type {
@@ -153,7 +153,7 @@ export type UsageGroupBy = keyof typeof GROUP_COLS;
  * `unresolvedPingsBySession` precedent in event-store.ts. All bucketing
  * is UTC: budgets and the calendar heatmap reset at UTC midnight.
  */
-export function createUsageStore(db: Database.Database) {
+export function createUsageStore(db: WasmDatabase) {
   const orm = drizzle(db);
 
   return {

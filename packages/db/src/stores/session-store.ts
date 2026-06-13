@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { WasmDatabase } from "../wasm/adapter.js";
+import { drizzle } from "../wasm/drizzle.js";
 import { and, desc, eq, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { randomUUID } from "node:crypto";
@@ -34,7 +34,7 @@ export interface SessionStoreOptions {
  * The race-safety story is documented inline.
  */
 export function createSessionStore(
-  db: Database.Database,
+  db: WasmDatabase,
   options: SessionStoreOptions = {}
 ) {
   const orm = drizzle(db);

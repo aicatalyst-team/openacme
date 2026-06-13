@@ -1,18 +1,15 @@
 import { describe, it, expect } from "vitest";
-import sharp from "sharp";
+import { Jimp } from "jimp";
 import { clampPngDimensions } from "../src/builtins/browser/inspection.js";
 
 async function makePng(width: number, height: number): Promise<Buffer> {
-  return sharp({
-    create: { width, height, channels: 3, background: { r: 10, g: 20, b: 30 } },
-  })
-    .png()
-    .toBuffer();
+  const img = new Jimp({ width, height, color: 0x0a141eff });
+  return Buffer.from(await img.getBuffer("image/png"));
 }
 
 async function dims(bytes: Buffer): Promise<{ width?: number; height?: number }> {
-  const meta = await sharp(bytes).metadata();
-  return { width: meta.width, height: meta.height };
+  const img = await Jimp.read(bytes);
+  return { width: img.bitmap.width, height: img.bitmap.height };
 }
 
 describe("clampPngDimensions", () => {

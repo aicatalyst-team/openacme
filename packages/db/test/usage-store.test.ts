@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import Database from "better-sqlite3";
+import { WasmDatabase } from "../src/wasm/adapter.js";
 import { applySchema } from "../src/connection.js";
 import {
   createUsageStore,
@@ -7,7 +7,7 @@ import {
 } from "../src/stores/usage-store.js";
 
 function freshDb() {
-  const db = new Database(":memory:");
+  const db = new WasmDatabase(":memory:");
   db.pragma("foreign_keys = ON");
   applySchema(db);
   return db;
@@ -36,7 +36,7 @@ function ev(overrides: Partial<UsageEventInput> = {}): UsageEventInput {
 }
 
 describe("UsageStore — record + totals", () => {
-  let db: Database.Database;
+  let db: WasmDatabase;
   let store: ReturnType<typeof createUsageStore>;
 
   beforeEach(() => {

@@ -1,4 +1,6 @@
 export { createDatabase, applySchema } from "./connection.js";
+export { WasmDatabase } from "./wasm/adapter.js";
+export type { RunResult, WasmStatement } from "./wasm/adapter.js";
 export {
   createSessionStore,
   type SessionStore,

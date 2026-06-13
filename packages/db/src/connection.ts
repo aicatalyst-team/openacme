@@ -1,29 +1,32 @@
-import Database from "better-sqlite3";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { resolveDataDir, type Config } from "@openacme/config";
+import { WasmDatabase } from "./wasm/adapter.js";
+import { drizzle } from "./wasm/drizzle.js";
+import { migrate } from "./wasm/migrate.js";
 
 /**
  * Open the SQLite database for OpenAcme and apply any pending migrations.
  *
- * Schema is owned by drizzle: edit `src/schema.ts`, run `pnpm db:generate`
- * to produce a new migration in `drizzle/`, commit both. At runtime
- * `drizzle-orm`'s migrator applies anything not yet recorded in
- * `__drizzle_migrations`. Never write `ALTER TABLE` by hand — let
- * drizzle-kit generate it from a schema diff.
+ * Backed by node-sqlite3-wasm (WASM SQLite) through {@link WasmDatabase}, so
+ * the install needs no native compiler on any platform. The stores keep
+ * driving it through a better-sqlite3-shaped surface.
  *
- * The package itself remains backed by raw better-sqlite3 prepared
- * statements (see `stores/`). Drizzle is used for migrations only; the
- * stores stay zero-overhead.
+ * Schema is owned by drizzle: edit `src/schema.ts`, run `pnpm db:generate`
+ * to produce a new migration in `drizzle/`, commit both. At runtime the
+ * migrator applies anything not yet recorded in `__drizzle_migrations`.
+ * Never write `ALTER TABLE` by hand — let drizzle-kit generate it.
  */
-export function createDatabase(config: Config): Database.Database {
+export function createDatabase(config: Config): WasmDatabase {
   const dataDir = resolveDataDir(config.dataDir);
   const dbPath = path.join(dataDir, "state.db");
-  const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
+  const db = new WasmDatabase(dbPath);
   db.pragma("foreign_keys = ON");
+  // WAL is unavailable on the WASM VFS (no shared memory); the default
+  // rollback journal serialises writers. busy_timeout lets a concurrent
+  // reader (e.g. a CLI command opening state.db) wait out a write instead
+  // of erroring.
+  db.pragma("busy_timeout = 5000");
   applySchema(db);
   return db;
 }
@@ -32,7 +35,7 @@ export function createDatabase(config: Config): Database.Database {
  * Apply all migrations to a database. Used by `createDatabase` and by
  * tests to bootstrap an in-memory db.
  */
-export function applySchema(db: Database.Database): void {
+export function applySchema(db: WasmDatabase): void {
   migrate(drizzle(db), { migrationsFolder: MIGRATIONS_FOLDER });
 }
 

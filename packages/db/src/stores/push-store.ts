@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { WasmDatabase } from "../wasm/adapter.js";
+import { drizzle } from "../wasm/drizzle.js";
 import { eq, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { pushSubscriptions, type PushSubscriptionRow } from "../schema.js";
@@ -37,7 +37,7 @@ function publicShape(row: PushSubscriptionRow): PushSubscriptionPublic {
  * Key material is internal: `list()` returns full rows for the
  * dispatcher; `listPublic()` returns the safe shape for API responses.
  */
-export function createPushStore(db: Database.Database) {
+export function createPushStore(db: WasmDatabase) {
   const orm = drizzle(db);
 
   return {
