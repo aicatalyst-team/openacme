@@ -43,15 +43,15 @@ Transient parts (e.g. `data-status`) are stripped by `readUIMessageStream` so th
 - Provider-gate the picker via `activeModalities` from `/api/models` (each preset carries `inputModalities` from the bundled registry). Disable picker + drag-drop overlay when the active model is text-only.
 - Per-file blob preview URL — `URL.revokeObjectURL` after send to avoid leaking object URLs.
 
-## One URL, one process: `:3210` in dev and published. Hono fronts the UI.
+## One URL, one process: `:3456` in dev and published. Hono fronts the UI.
 
-`pnpm dev` runs one server process per data dir on the configured `server.port` (default `:3210`). In dev, `packages/server/scripts/dev.mjs` sets `OPENACME_WEB_DEV=<apps/web path>` and the server embeds Vite in middleware mode (`packages/server/src/dev-web.ts`): `/api/*` → Hono, everything else → Vite (`appType: "spa"` serves index.html with history fallback), and the HMR WebSocket attaches to the same server via `hmr: { server }`. No separate web dev process, no derived web port. Two parallel `pnpm dev` sessions against different data dirs work automatically as long as their `server.port`s differ — single config knob, no port math.
+`pnpm dev` runs one server process per data dir on the configured `server.port` (default `:3456`). In dev, `packages/server/scripts/dev.mjs` sets `OPENACME_WEB_DEV=<apps/web path>` and the server embeds Vite in middleware mode (`packages/server/src/dev-web.ts`): `/api/*` → Hono, everything else → Vite (`appType: "spa"` serves index.html with history fallback), and the HMR WebSocket attaches to the same server via `hmr: { server }`. No separate web dev process, no derived web port. Two parallel `pnpm dev` sessions against different data dirs work automatically as long as their `server.port`s differ — single config knob, no port math.
 
 - The web app is a Vite + TanStack Router SPA. Routes live in `apps/web/app/routes/`; search params are Zod-validated via `validateSearch` — use `z.coerce.string()` for string params (TanStack's search parser turns `?id=3` into the number 3; bare `z.string()` rejects it and the route errors).
 - `vite` is a devDependency of `packages/server` behind a dynamic `import()` — published dists never load it. Keep the version range in sync with apps/web so pnpm dedupes to one instance.
 - The server's `tsx watch` ignores the web root (`--ignore <webRoot>/**`): Vite bundles `vite.config.ts` into `apps/web/node_modules/.vite-temp/` and imports it, and watching those temp files causes an endless restart loop. Vite owns reloading for everything under the web root.
 - Server-code edits restart the process, which restarts the embedded Vite — the browser tab full-reloads on HMR reconnect. Web-only edits hot-reload in place.
-- Published installs: Hono on `:3210` serves the static build at `packages/server/web/` (filled by `prepack` from `apps/web/out/`). Single index.html; every non-asset path falls back to it and the router resolves client-side.
+- Published installs: Hono on `:3456` serves the static build at `packages/server/web/` (filled by `prepack` from `apps/web/out/`). Single index.html; every non-asset path falls back to it and the router resolves client-side.
 - Daemons running without `OPENACME_WEB_DEV` (e.g. `pnpm agent start --data-dir ~/.openacme-test`) serve the bundled static if present, else fall back to the workspace `apps/web/out` (after a local `pnpm build`). API-only if neither exists.
 - Auth whitelist: Vite emits all hashed JS/CSS/font assets under `/assets/` — that prefix (plus favicon + PWA files) bypasses the secret-cookie middleware so the login page can render pre-auth on non-loopback installs.
 
@@ -80,6 +80,6 @@ There is **no** session, no token, no CSRF, no CORS gate (CORS is wide open). Th
 
 ## API client + base URL
 
-`app/lib/api.ts` carries `API_BASE` (default `""` for same-origin). The browser only ever talks to `:3210` (Hono fronts the UI in dev via proxy and serves the bundled static in published), so same-origin always works — no `next.config.js` rewrites and no hardcoded host.
+`app/lib/api.ts` carries `API_BASE` (default `""` for same-origin). The browser only ever talks to `:3456` (Hono fronts the UI in dev via proxy and serves the bundled static in published), so same-origin always works — no `next.config.js` rewrites and no hardcoded host.
 
-- Don't hardcode `http://localhost:3210` elsewhere. Threading `API_BASE` through is the only way same-origin static and split-port dev both keep working.
+- Don't hardcode `http://localhost:3456` elsewhere. Threading `API_BASE` through is the only way same-origin static and split-port dev both keep working.

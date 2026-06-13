@@ -22,6 +22,7 @@ import {
   loginWithSetupToken,
   looksHeadless,
 } from "@openacme/auth";
+import { startCommand } from "./start.js";
 
 /**
  * Interactive setup wizard: provider → auth → default model → config.yaml.
@@ -130,6 +131,19 @@ export async function setupCommand(opts: { dataDir?: string }) {
     `MCP servers: ${path.join(dataDir, "mcp.json")} — paste any Claude Desktop / Cursor config to add`
   );
   p.note(summaryLines.join("\n"), "Summary");
+
+  // Offer to start the daemon right away. Headless setup skips the prompt and
+  // leaves the user with the explicit `openacme start` instruction.
+  if (!looksHeadless()) {
+    const startNow = await p.confirm({
+      message: "Start OpenAcme now?",
+    });
+    if (!p.isCancel(startNow) && startNow) {
+      p.outro("Setup complete! Starting OpenAcme — Acme, your platform helper, will be ready.");
+      await startCommand({ dataDir });
+      return;
+    }
+  }
 
   p.outro(
     "Setup complete! Run `openacme start` — Acme, your platform helper, will be ready, and you can hire more agents from the web console."

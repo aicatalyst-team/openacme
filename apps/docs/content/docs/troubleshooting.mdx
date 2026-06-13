@@ -14,7 +14,7 @@ openacme logs
 
 The common causes:
 
-- **Port already in use.** Something else is on `3210`. Change `server.port`
+- **Port already in use.** Something else is on `3456`. Change `server.port`
   in `~/.openacme/config.yaml` and `openacme restart`.
 - **Stale process.** `openacme stop` then `openacme start`. If a process
   survived, `openacme status` shows its pid.
