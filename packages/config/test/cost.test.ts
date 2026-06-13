@@ -1,9 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { ModelConfigSchema, lookupModelMetadata } from "../src/schema.js";
+import {
+  ModelConfigSchema,
+  lookupModelMetadata,
+  type ModelMetadata,
+} from "../src/schema.js";
 import {
   computeUsageCost,
   computeCacheSavings,
   resolveUsageRates,
+  fallbackCacheRates,
 } from "../src/cost.js";
 
 const anthropic = ModelConfigSchema.parse({
@@ -20,21 +25,37 @@ describe("resolveUsageRates", () => {
     ).toBeNull();
   });
 
-  it("derives Anthropic cache rates from multipliers when registry lacks them", () => {
+  it("uses explicit registry cache rates when present", () => {
+    // models.dev publishes cache rates for snapshot models; they win.
     const rates = resolveUsageRates(anthropic)!;
     expect(rates.inputPerMTok).toBe(0.8);
     expect(rates.outputPerMTok).toBe(4);
     expect(rates.cacheReadPerMTok).toBeCloseTo(0.08);
-    expect(rates.cacheWritePerMTok).toBeCloseTo(1.0); // 1.25× for 5m TTL
+    expect(rates.cacheWritePerMTok).toBeCloseTo(1.0);
+  });
+});
+
+// Reached for claude models not yet carrying explicit cache rates — e.g. a
+// freshly-shipped model in our presets before models.dev publishes its rates.
+describe("fallbackCacheRates", () => {
+  const claude = ModelConfigSchema.parse({
+    provider: "anthropic",
+    model: "claude-future",
+  });
+
+  it("derives anthropic rates from multipliers (5m TTL)", () => {
+    const fb = fallbackCacheRates(claude, {} as ModelMetadata, 0.8);
+    expect(fb.read).toBeCloseTo(0.08); // 0.1× input
+    expect(fb.write).toBeCloseTo(1.0); // 1.25× for 5m TTL
   });
 
   it("uses the 2× write multiplier for 1h cacheTtl", () => {
     const oneHour = ModelConfigSchema.parse({
       provider: "anthropic",
-      model: "claude-3-5-haiku-20241022",
+      model: "claude-future",
       cacheTtl: "1h",
     });
-    expect(resolveUsageRates(oneHour)!.cacheWritePerMTok).toBeCloseTo(1.6);
+    expect(fallbackCacheRates(oneHour, {} as ModelMetadata, 0.8).write).toBeCloseTo(1.6);
   });
 });
 

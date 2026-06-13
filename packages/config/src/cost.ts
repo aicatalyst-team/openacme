@@ -29,7 +29,7 @@ export interface UsageCostRates {
  * common discount (OpenAI/Gemini implicit caching); writes aren't
  * billed separately, so write rate = input rate.
  */
-function fallbackCacheRates(
+export function fallbackCacheRates(
   model: ModelConfig,
   meta: ModelMetadata,
   inputPerMTok: number
