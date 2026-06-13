@@ -10,5 +10,9 @@
 # hook with `git push --no-verify`.
 
 set -e
+
+# Skip in CI: workflows run the e2e suite as an explicit step.
+[ -n "$CI" ] && exit 0
+
 pnpm build
 pnpm test:e2e

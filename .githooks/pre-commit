@@ -5,5 +5,11 @@
 # `git commit --no-verify` for mid-rebase fixups or intentional WIP.
 
 set -e
+
+# Skip in CI: workflows run check-types/test as explicit steps, and automated
+# commits there (e.g. the changesets version bot) run only `pnpm install` with
+# no build, so `check-types` can't resolve workspace deps and would wedge.
+[ -n "$CI" ] && exit 0
+
 pnpm check-types
 pnpm test
