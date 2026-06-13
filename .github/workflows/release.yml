@@ -1,6 +1,12 @@
 name: Release
 
+# Runs on every push to main. The changesets action opens/updates the
+# "Version Packages" PR while changesets exist, and PUBLISHES (npm + GitHub
+# Releases + tags) once they're consumed — i.e. the moment that PR is merged.
+# workflow_dispatch stays as a manual fallback.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
