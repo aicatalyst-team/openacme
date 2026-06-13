@@ -11,7 +11,7 @@ import type { Provider } from "./schema.js";
 export const DEFAULT_MODEL_BY_PROVIDER: Record<Provider, string | null> = {
   openai: "gpt-5.5",
   anthropic: "claude-sonnet-4-6",
-  google: "gemini-2.5-flash",
+  google: "gemini-3.5-flash",
   openrouter: "anthropic/claude-sonnet-4.6",
   ollama: "llama3.3",
   custom: null,

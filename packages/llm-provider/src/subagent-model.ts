@@ -14,7 +14,7 @@ const CHEAP_MODEL_BY_PROVIDER: Record<string, string> = {
   // ChatGPT OAuth (Codex backend) rejects mini/codex models; 5.2 is the
   // cheaper option verified to work on both OAuth and API-key auth.
   openai: "gpt-5.2",
-  google: "gemini-2.5-flash-lite",
+  google: "gemini-3.1-flash-lite",
   // ollama/custom: no safe guess about what's installed — keep the main model.
 };
 

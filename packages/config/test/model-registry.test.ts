@@ -25,6 +25,14 @@ describe("lookupModelMetadata (bundled snapshot)", () => {
     expect(meta.contextWindow).toBeGreaterThan(100_000);
   });
 
+  it("finds the latest anthropic models", () => {
+    const opus = lookupModelMetadata(model("anthropic", "claude-opus-4-8"));
+    expect(opus.contextWindow).toBeGreaterThan(100_000);
+    const fable = lookupModelMetadata(model("anthropic", "claude-fable-5"));
+    expect(fable.contextWindow).toBeGreaterThan(100_000);
+    expect(fable.outputCostPerMTok).toBe(50);
+  });
+
   it("finds openai gpt-4o", () => {
     const meta = lookupModelMetadata(model("openai", "gpt-4o"));
     expect(meta.contextWindow).toBeGreaterThan(100_000);
@@ -74,7 +82,7 @@ describe("lookupModelMetadata (bundled snapshot)", () => {
     // models.dev's `openrouter` provider lists `anthropic/...` ids;
     // provider-prefix lookup finds them.
     const meta = lookupModelMetadata(
-      model("openrouter", "anthropic/claude-3.7-sonnet")
+      model("openrouter", "anthropic/claude-sonnet-4.6")
     );
     expect(meta.contextWindow).toBeGreaterThanOrEqual(100_000);
   });
