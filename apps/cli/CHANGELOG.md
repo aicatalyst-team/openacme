@@ -1,5 +1,22 @@
 # @openacme/cli
 
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [[`f30a4c0`](https://github.com/sandydasari/openacme/commit/f30a4c08cf36de512c88b37594eac5b92dae20cf)]:
+  - @openacme/server@0.8.0
+  - @openacme/agent-core@0.8.0
+  - @openacme/auth@0.8.0
+  - @openacme/config@0.8.0
+  - @openacme/db@0.8.0
+  - @openacme/llm-provider@0.8.0
+  - @openacme/mcp-client@0.8.0
+  - @openacme/memory@0.8.0
+  - @openacme/skills@0.8.0
+  - @openacme/tasks@0.8.0
+  - @openacme/tools@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes
