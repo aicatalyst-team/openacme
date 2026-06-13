@@ -49,6 +49,8 @@ import {
   registry as toolRegistry,
   bindSessionSearch,
   bindSkillView,
+  bindSkillAuthor,
+  SKILL_AUTHOR_TOOLS,
   bindMemory,
   bindTaskStore,
   bindBrowser,
@@ -93,7 +95,7 @@ import {
   openBrowser,
   looksHeadless,
 } from "@openacme/auth";
-import { HubError, SkillHub, SkillRegistry, type SkillIndexEntry } from "@openacme/skills";
+import { HubError, HubLockFile, SkillHub, SkillRegistry, type SkillIndexEntry } from "@openacme/skills";
 import {
   AgentCatalog,
   buildAgentFromTemplate,
@@ -542,6 +544,29 @@ export class AgentManager {
           : null;
       },
       list: () => this.skillRegistry.getIndex(),
+    });
+
+    // Write side of the skills surface, live only when
+    // `skills.autoGenerate` is on (the tools are merged into agents'
+    // effective sets below on the same flag). Hub-managed skills are
+    // read-only to agents — their source of truth is the install source.
+    const skillsLock = new HubLockFile(skillsDir);
+    bindSkillAuthor({
+      exists: (name) => this.skillRegistry.getSkill(name) !== undefined,
+      isHubManaged: (name) => skillsLock.get(name) !== undefined,
+      save: (name, description, tags, body) => {
+        const skill = this.skillRegistry.saveSkill(
+          skillsDir,
+          name,
+          description,
+          tags,
+          body
+        );
+        // New/changed skill index — rebuild agents so future sessions
+        // see it. In-flight sessions keep their frozen prompts.
+        this.agents.clear();
+        return { name: skill.name };
+      },
     });
 
     // Bundled agent templates. Read-once snapshot of `packages/agent-catalog/templates/`;
@@ -1856,7 +1881,14 @@ export class AgentManager {
       // task_*). Dedup defensively in case a legacy AGENT.md still lists
       // a system tool explicitly.
       tools: Array.from(
-        new Set([...def.tools, ...mcpToolNames, ...SYSTEM_TOOLS])
+        new Set([
+          ...def.tools,
+          ...mcpToolNames,
+          ...SYSTEM_TOOLS,
+          // Opt-in self-improvement surface: skill authoring is workforce-
+          // wide via `skills.autoGenerate`, not per-agent.
+          ...(this.config.skills.autoGenerate ? SKILL_AUTHOR_TOOLS : []),
+        ])
       ),
       maxSteps: b.maxSteps,
       maxOutputTokens: b.maxOutputTokens,

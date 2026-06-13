@@ -13,6 +13,11 @@ export {
   type SkillViewEntry,
 } from "./builtins/skill.js";
 export {
+  bindSkillAuthor,
+  SKILL_AUTHOR_TOOLS,
+  type SkillAuthorBindings,
+} from "./builtins/skill-author.js";
+export {
   toolCallContext,
   getCurrentSessionId,
   getCurrentAgentId,
@@ -75,6 +80,7 @@ import "./builtins/web-search.js";
 import "./builtins/execute_code.js";
 import "./builtins/process.js";
 import "./builtins/skill.js";
+import "./builtins/skill-author.js";
 import "./builtins/memory.js";
 import "./builtins/tasks.js";
 import "./builtins/agent.js";
