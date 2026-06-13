@@ -88,6 +88,7 @@ function buildExtractionPrompt(
     "- Feedback the user gave (corrections OR confirmations of non-obvious choices).",
     "- Decisions whose rationale wouldn't be obvious from code / git history alone.",
     "- Pointers to where information lives in external systems.",
+    "- Process lessons from how the work itself went — an approach that failed and the correction, a recurring mistake pattern, a strategy that worked where the obvious one didn't. Save these under `lessons/<topic>.md`; update an existing lesson rather than filing a near-duplicate.",
     "",
     "Save each as its own file with `name` + `description` frontmatter and a body that leads with the point, then `**Why:**` and `**How to apply:**` lines (see your system prompt for the convention). Add a one-line pointer to `MEMORY.md` after each new entry.",
     "",
