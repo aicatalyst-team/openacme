@@ -34,7 +34,11 @@ function openBrowser(url: string): void {
     process.platform === "darwin" ? "open" :
     process.platform === "win32" ? "start" :
     "xdg-open";
-  spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
+  const child = spawn(cmd, [url], { detached: true, stdio: "ignore" });
+  // Headless servers have no xdg-open; a failed spawn must not crash the
+  // command — opening the browser is best-effort convenience only.
+  child.on("error", () => {});
+  child.unref();
 }
 
 function userFacingUrl(host: string, port: number): string {

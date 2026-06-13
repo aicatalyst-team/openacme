@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { WasmDatabase } from "../wasm/adapter.js";
+import { drizzle } from "../wasm/drizzle.js";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { createLogger } from "@openacme/config/logger";
@@ -47,7 +47,7 @@ export type EventListener = (event: TaskEventRow) => void;
  * MUST NOT throw — a misbehaving listener gets logged and skipped so
  * one bad subscriber doesn't break event flow.
  */
-export function createEventStore(db: Database.Database) {
+export function createEventStore(db: WasmDatabase) {
   const orm = drizzle(db);
   const listeners: EventListener[] = [];
   let firing = false;

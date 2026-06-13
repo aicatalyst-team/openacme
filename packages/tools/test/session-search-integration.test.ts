@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import Database from "better-sqlite3";
 import {
   applySchema,
+  WasmDatabase,
   createSessionStore,
   createMessageStore,
   type StoredUIMessage,
@@ -23,7 +23,7 @@ interface SearchResult {
 }
 
 function freshDb() {
-  const db = new Database(":memory:");
+  const db = new WasmDatabase(":memory:");
   db.pragma("foreign_keys = ON");
   applySchema(db);
   return db;
@@ -52,7 +52,7 @@ async function searchAs(
  * AgentManager wires up at runtime.
  */
 describe("session_search — full DB integration", () => {
-  let db: Database.Database;
+  let db: WasmDatabase;
   let sessions: ReturnType<typeof createSessionStore>;
   let messages: ReturnType<typeof createMessageStore>;
 

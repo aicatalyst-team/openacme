@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { WasmDatabase } from "../wasm/adapter.js";
+import { drizzle } from "../wasm/drizzle.js";
 import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { taskComments, type TaskCommentRow } from "../schema.js";
@@ -30,7 +30,7 @@ export interface CommentListOptions {
  * (scheduler / automation). Authorship gates live in the tool layer;
  * the store accepts whatever it's given.
  */
-export function createCommentStore(db: Database.Database) {
+export function createCommentStore(db: WasmDatabase) {
   const orm = drizzle(db);
 
   return {

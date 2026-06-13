@@ -30,11 +30,10 @@ export async function clampPngDimensions(bytes: Buffer): Promise<Buffer> {
   if (!dims || (dims.width <= MAX_IMAGE_DIM && dims.height <= MAX_IMAGE_DIM)) {
     return bytes;
   }
-  const sharp = (await import("sharp")).default;
-  return await sharp(bytes)
-    .resize({ width: MAX_IMAGE_DIM, height: MAX_IMAGE_DIM, fit: "inside" })
-    .png()
-    .toBuffer();
+  const { Jimp } = await import("jimp");
+  const img = await Jimp.read(bytes);
+  img.scaleToFit({ w: MAX_IMAGE_DIM, h: MAX_IMAGE_DIM });
+  return Buffer.from(await img.getBuffer("image/png"));
 }
 
 const ScreenshotParams = z.object({

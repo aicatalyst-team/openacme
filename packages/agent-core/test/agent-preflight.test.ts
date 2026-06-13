@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import Database from "better-sqlite3";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
   applySchema,
+  WasmDatabase,
   createSessionStore,
   createMessageStore,
   createInboxStore,
@@ -43,7 +43,7 @@ vi.mock("@openacme/llm-provider", () => ({
 }));
 
 function freshDb() {
-  const db = new Database(":memory:");
+  const db = new WasmDatabase(":memory:");
   db.pragma("foreign_keys = ON");
   applySchema(db);
   return db;
@@ -56,7 +56,7 @@ const stubToolRegistry = {
 } as unknown as ToolRegistry;
 
 function makeAgent(opts: {
-  db: Database.Database;
+  db: WasmDatabase;
   thresholdTokens: number | null;
   thresholdPercent?: number | null;
   contextWindow?: number | null;
