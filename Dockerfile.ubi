@@ -19,17 +19,18 @@ RUN pnpm install --frozen-lockfile
 # Build the monorepo (turbo handles build order)
 RUN pnpm run build
 
-# Create writable data directory for runtime
+# Create writable data directory and config for runtime
 USER 0
 RUN mkdir -p /opt/app-root/data && \
-    chgrp -R 0 /opt/app-root && chmod -R g=u /opt/app-root
+    echo 'server:' > /opt/app-root/data/config.yaml && \
+    echo '  host: "0.0.0.0"' >> /opt/app-root/data/config.yaml && \
+    echo '  port: 3456' >> /opt/app-root/data/config.yaml && \
+    chgrp -R 0 /opt/app-root/data && chmod -R g=u /opt/app-root/data
 USER 1001
 
 # Environment configuration
 ENV NODE_ENV=production
 ENV OPENACME_DATA_DIR=/opt/app-root/data
-ENV OPENACME_HOST=0.0.0.0
-ENV OPENACME_PORT=3456
 
 EXPOSE 3456
 
