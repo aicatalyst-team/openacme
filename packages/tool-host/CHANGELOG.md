@@ -1,5 +1,14 @@
 # @openacme/tool-host
 
+## 0.7.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @openacme/tools@0.9.1
+  - @openacme/mcp-client@0.9.1
+  - @openacme/config@0.9.1
+
 ## 0.7.2
 
 ### Patch Changes
