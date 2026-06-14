@@ -4,6 +4,7 @@ import { resolveDataDir, type Config } from "@openacme/config";
 import { WasmDatabase } from "./wasm/adapter.js";
 import { drizzle } from "./wasm/drizzle.js";
 import { migrate } from "./wasm/migrate.js";
+import { recoverWalDatabase } from "./wasm/wal-recover.js";
 
 /**
  * Open the SQLite database for OpenAcme and apply any pending migrations.
@@ -20,6 +21,10 @@ import { migrate } from "./wasm/migrate.js";
 export function createDatabase(config: Config): WasmDatabase {
   const dataDir = resolveDataDir(config.dataDir);
   const dbPath = path.join(dataDir, "state.db");
+  // Upgrade path: ≤0.8 left the file in WAL mode, which the WASM engine can't
+  // open. Convert it to rollback journaling before the first query. No-op for
+  // databases the WASM engine already owns.
+  recoverWalDatabase(dbPath);
   const db = new WasmDatabase(dbPath);
   db.pragma("foreign_keys = ON");
   // WAL is unavailable on the WASM VFS (no shared memory); the default
